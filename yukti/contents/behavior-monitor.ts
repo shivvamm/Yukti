@@ -1,0 +1,267 @@
+import type { PlasmoCSConfig } from "plasmo"
+
+export const config: PlasmoCSConfig = {
+  matches: ["<all_urls>"],
+  all_frames: false,
+  run_at: "document_idle"
+}
+
+// Privacy-first configuration
+const SENSITIVE_INPUT_TYPES = [
+  "password",
+  "credit-card-number",
+  "cc-number",
+  "card-number",
+  "cardnumber"
+]
+
+const BLACKLISTED_DOMAINS = [
+  "bank",
+  "paypal",
+  "stripe",
+  "healthcare",
+  "medical",
+  "health",
+  "hospital"
+]
+
+interface UserInteraction {
+  type: "click" | "scroll" | "navigation" | "form_interaction" | "time_spent"
+  timestamp: number
+  url: string
+  elementType?: string
+  elementId?: string
+  elementClass?: string
+  elementText?: string
+  elementHTML?: string
+  scrollDepth?: number
+  timeSpent?: number
+}
+
+let isTrackingEnabled = false
+let isPaused = false
+let pageStartTime = Date.now()
+let lastScrollDepth = 0
+
+// Check if tracking is enabled
+async function checkTrackingStatus() {
+  const result = await chrome.storage.local.get(["trackingEnabled", "isPaused"])
+  isTrackingEnabled = result.trackingEnabled || false
+  isPaused = result.isPaused || false
+}
+
+// Check if current domain is blacklisted
+function isBlacklistedDomain(url: string): boolean {
+  const hostname = new URL(url).hostname.toLowerCase()
+  return BLACKLISTED_DOMAINS.some((domain) => hostname.includes(domain))
+}
+
+// Check if element is sensitive
+function isSensitiveInput(element: HTMLElement): boolean {
+  if (element.tagName === "INPUT") {
+    const input = element as HTMLInputElement
+    const type = input.type?.toLowerCase()
+    const name = input.name?.toLowerCase()
+    const id = input.id?.toLowerCase()
+    const autocomplete = input.autocomplete?.toLowerCase()
+
+    // Check input type
+    if (SENSITIVE_INPUT_TYPES.some((sensitive) => type?.includes(sensitive))) {
+      return true
+    }
+
+    // Check name, id, and autocomplete attributes
+    if (
+      SENSITIVE_INPUT_TYPES.some(
+        (sensitive) =>
+          name?.includes(sensitive) ||
+          id?.includes(sensitive) ||
+          autocomplete?.includes(sensitive)
+      )
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+// Send interaction data to background worker
+async function recordInteraction(interaction: UserInteraction) {
+  if (!isTrackingEnabled || isPaused || isBlacklistedDomain(window.location.href)) {
+    return
+  }
+
+  try {
+    await chrome.runtime.sendMessage({
+      type: "RECORD_INTERACTION",
+      data: interaction
+    })
+    // Debug logging - remove in production if needed
+    console.log(`✅ Yukti tracked: ${interaction.type}`, {
+      element: interaction.elementType,
+      id: interaction.elementId,
+      url: new URL(interaction.url).hostname
+    })
+  } catch (error) {
+    console.error("Failed to record interaction:", error)
+  }
+}
+
+// Click tracking
+function handleClick(event: MouseEvent) {
+  const target = event.target as HTMLElement
+
+  // Skip sensitive elements
+  if (isSensitiveInput(target)) {
+    return
+  }
+
+  // Capture the full HTML of the clicked element (no truncation)
+  const elementHTML = target.outerHTML || undefined
+
+  const interaction: UserInteraction = {
+    type: "click",
+    timestamp: Date.now(),
+    url: window.location.href,
+    elementType: target.tagName,
+    elementId: target.id || undefined,
+    elementClass: target.className || undefined,
+    elementText: target.textContent?.slice(0, 50) || undefined, // Limit text length
+    elementHTML: elementHTML
+  }
+
+  recordInteraction(interaction)
+}
+
+// Scroll tracking
+let scrollTimeout: NodeJS.Timeout
+function handleScroll() {
+  clearTimeout(scrollTimeout)
+  scrollTimeout = setTimeout(() => {
+    const scrollDepth = Math.round(
+      (window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100
+    )
+
+    // Only record if scroll depth changed significantly
+    if (Math.abs(scrollDepth - lastScrollDepth) >= 10) {
+      lastScrollDepth = scrollDepth
+
+      const interaction: UserInteraction = {
+        type: "scroll",
+        timestamp: Date.now(),
+        url: window.location.href,
+        scrollDepth
+      }
+
+      recordInteraction(interaction)
+    }
+  }, 500)
+}
+
+// Form interaction tracking (non-sensitive)
+function handleFormInteraction(event: Event) {
+  const target = event.target as HTMLElement
+
+  // Skip sensitive inputs
+  if (isSensitiveInput(target)) {
+    return
+  }
+
+  const interaction: UserInteraction = {
+    type: "form_interaction",
+    timestamp: Date.now(),
+    url: window.location.href,
+    elementType: target.tagName,
+    elementId: target.id || undefined
+  }
+
+  recordInteraction(interaction)
+}
+
+// Track time spent on page
+function trackTimeSpent() {
+  const timeSpent = Date.now() - pageStartTime
+
+  const interaction: UserInteraction = {
+    type: "time_spent",
+    timestamp: Date.now(),
+    url: window.location.href,
+    timeSpent
+  }
+
+  recordInteraction(interaction)
+}
+
+// Navigation tracking
+function handleNavigation() {
+  // Record time spent on previous page
+  trackTimeSpent()
+
+  // Reset for new page
+  pageStartTime = Date.now()
+  lastScrollDepth = 0
+
+  const interaction: UserInteraction = {
+    type: "navigation",
+    timestamp: Date.now(),
+    url: window.location.href
+  }
+
+  recordInteraction(interaction)
+}
+
+// Initialize tracking
+async function initializeTracking() {
+  await checkTrackingStatus()
+
+  if (!isTrackingEnabled) {
+    console.log("Yukti: Tracking is disabled")
+    return
+  }
+
+  if (isBlacklistedDomain(window.location.href)) {
+    console.log("Yukti: Domain is blacklisted for privacy")
+    return
+  }
+
+  // Add event listeners
+  document.addEventListener("click", handleClick, true)
+  window.addEventListener("scroll", handleScroll, { passive: true })
+  document.addEventListener("focus", handleFormInteraction, true)
+
+  // Track navigation (for SPAs)
+  let lastUrl = window.location.href
+  const observer = new MutationObserver(() => {
+    const currentUrl = window.location.href
+    if (currentUrl !== lastUrl) {
+      lastUrl = currentUrl
+      handleNavigation()
+    }
+  })
+  observer.observe(document, { subtree: true, childList: true })
+
+  // Track time spent when page unloads
+  window.addEventListener("beforeunload", trackTimeSpent)
+
+  console.log("Yukti: Behavior monitoring initialized")
+}
+
+// Listen for tracking status changes
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "TRACKING_STATUS_CHANGED") {
+    checkTrackingStatus()
+  } else if (message.type === "PAUSE_TRACKING") {
+    isPaused = true
+  } else if (message.type === "RESUME_TRACKING") {
+    isPaused = false
+  }
+})
+
+// Initialize when DOM is ready
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initializeTracking)
+} else {
+  initializeTracking()
+}
+
+export {}
