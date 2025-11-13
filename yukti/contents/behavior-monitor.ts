@@ -26,28 +26,31 @@ const BLACKLISTED_DOMAINS = [
 ]
 
 interface UserInteraction {
-  type: "click" | "scroll" | "navigation" | "form_interaction" | "time_spent"
+  type: "click" | "scroll" | "navigation" | "form_interaction" | "input_value" | "time_spent" | "tab_opened" | "tab_closed" | "tab_activated"
   timestamp: number
   url: string
+  tabId?: number
+  windowId?: number
   elementType?: string
   elementId?: string
   elementClass?: string
   elementText?: string
   elementHTML?: string
+  inputValue?: string
+  inputName?: string
   scrollDepth?: number
   timeSpent?: number
+  tabTitle?: string
 }
 
-let isTrackingEnabled = false
-let isPaused = false
+let isTrackingEnabled = true // Always enabled by default
 let pageStartTime = Date.now()
 let lastScrollDepth = 0
 
 // Check if tracking is enabled
 async function checkTrackingStatus() {
-  const result = await chrome.storage.local.get(["trackingEnabled", "isPaused"])
-  isTrackingEnabled = result.trackingEnabled || false
-  isPaused = result.isPaused || false
+  const result = await chrome.storage.local.get(["trackingEnabled"])
+  isTrackingEnabled = result.trackingEnabled !== false // Default to true
 }
 
 // Check if current domain is blacklisted
@@ -87,7 +90,7 @@ function isSensitiveInput(element: HTMLElement): boolean {
 
 // Send interaction data to background worker
 async function recordInteraction(interaction: UserInteraction) {
-  if (!isTrackingEnabled || isPaused || isBlacklistedDomain(window.location.href)) {
+  if (!isTrackingEnabled || isBlacklistedDomain(window.location.href)) {
     return
   }
 
@@ -178,6 +181,29 @@ function handleFormInteraction(event: Event) {
   recordInteraction(interaction)
 }
 
+// Input value tracking (captures what user types)
+function handleInputValue(event: Event) {
+  const target = event.target as HTMLInputElement | HTMLTextAreaElement
+
+  // Skip sensitive inputs - NEVER track passwords
+  if (isSensitiveInput(target as HTMLElement)) {
+    return
+  }
+
+  const interaction: UserInteraction = {
+    type: "input_value",
+    timestamp: Date.now(),
+    url: window.location.href,
+    elementType: target.tagName,
+    elementId: target.id || undefined,
+    elementClass: target.className || undefined,
+    inputName: target.name || undefined,
+    inputValue: target.value || ""
+  }
+
+  recordInteraction(interaction)
+}
+
 // Track time spent on page
 function trackTimeSpent() {
   const timeSpent = Date.now() - pageStartTime
@@ -229,6 +255,10 @@ async function initializeTracking() {
   window.addEventListener("scroll", handleScroll, { passive: true })
   document.addEventListener("focus", handleFormInteraction, true)
 
+  // Track input values (what user types)
+  document.addEventListener("input", handleInputValue, true)
+  document.addEventListener("change", handleInputValue, true)
+
   // Track navigation (for SPAs)
   let lastUrl = window.location.href
   const observer = new MutationObserver(() => {
@@ -250,10 +280,6 @@ async function initializeTracking() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "TRACKING_STATUS_CHANGED") {
     checkTrackingStatus()
-  } else if (message.type === "PAUSE_TRACKING") {
-    isPaused = true
-  } else if (message.type === "RESUME_TRACKING") {
-    isPaused = false
   }
 })
 

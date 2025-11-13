@@ -1,16 +1,21 @@
 export {}
 
 interface UserInteraction {
-  type: "click" | "scroll" | "navigation" | "form_interaction" | "time_spent"
+  type: "click" | "scroll" | "navigation" | "form_interaction" | "input_value" | "time_spent" | "tab_opened" | "tab_closed" | "tab_activated"
   timestamp: number
   url: string
+  tabId?: number
+  windowId?: number
   elementType?: string
   elementId?: string
   elementClass?: string
   elementText?: string
   elementHTML?: string
+  inputValue?: string
+  inputName?: string
   scrollDepth?: number
   timeSpent?: number
+  tabTitle?: string
 }
 
 interface UserPattern {
@@ -20,32 +25,59 @@ interface UserPattern {
   scrollBehavior: { [url: string]: number[] }
 }
 
+interface TabData {
+  tabId: number
+  tabTitle: string
+  url: string
+  dates: {
+    [dateKey: string]: UserInteraction[] // dateKey format: "YYYY-MM-DD"
+  }
+}
+
+interface InteractionsByTab {
+  [tabId: string]: TabData
+}
+
 const MAX_INTERACTIONS_STORED = 10000 // Limit storage size
+const BATCH_SIZE = 30 // Send to server every N interactions
+const SERVER_URL = "http://localhost:8000" // Server endpoint
 
 // Initialize default settings
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({
-    trackingEnabled: false, // Disabled by default - requires explicit consent
-    isPaused: false,
-    trackClicks: true,
-    trackScrolling: true,
-    trackNavigation: true,
-    trackFormInteractions: false, // More sensitive, off by default
+    trackingEnabled: true, // Always on - tracking starts immediately
+    // Opt-out settings: false = track, true = don't track
+    disableClicks: false, // Track clicks by default
+    disableScrolling: false, // Track scrolling by default
+    disableNavigation: false, // Track navigation by default
+    disableFormInteractions: false, // Track form focus by default
+    disableInputValues: false, // Track input values by default
     interactions: [],
+    interactionsByTab: {}, // New hierarchical structure
     patterns: {
       frequentUrls: [],
       commonActions: [],
       avgTimeSpent: {},
       scrollBehavior: {}
-    }
+    },
+    batchCounter: 0, // Counter for batch sending
+    serverSuggestions: [], // Store suggestions from server
+    serverActions: [] // Store actions from server
   })
-  console.log("Yukti: Extension installed, tracking disabled by default")
+  console.log("Yukti: Extension installed, tracking everything automatically")
 })
 
 // Handle messages from content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "RECORD_INTERACTION") {
-    recordInteraction(message.data)
+    // Add tab information from sender
+    const interaction = message.data
+    if (sender.tab) {
+      interaction.tabId = sender.tab.id
+      interaction.windowId = sender.tab.windowId
+      interaction.tabTitle = sender.tab.title
+    }
+    recordInteraction(interaction)
     sendResponse({ success: true })
   } else if (message.type === "GET_SUGGESTIONS") {
     getSuggestions(message.url).then(sendResponse)
@@ -53,43 +85,94 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.type === "GET_STATS") {
     getStats().then(sendResponse)
     return true
+  } else if (message.type === "GET_SERVER_SUGGESTIONS") {
+    getServerSuggestions().then(sendResponse)
+    return true
+  } else if (message.type === "EXECUTE_ACTION") {
+    logActionExecution(message.action, message.success).then(sendResponse)
+    return true
   }
 })
+
+// Helper function to format date as YYYY-MM-DD
+function getDateKey(timestamp: number): string {
+  const date = new Date(timestamp)
+  return date.toISOString().split("T")[0]
+}
 
 // Record user interaction
 async function recordInteraction(interaction: UserInteraction) {
   try {
     const result = await chrome.storage.local.get([
       "interactions",
-      "trackClicks",
-      "trackScrolling",
-      "trackNavigation",
-      "trackFormInteractions"
+      "interactionsByTab",
+      "disableClicks",
+      "disableScrolling",
+      "disableNavigation",
+      "disableFormInteractions",
+      "disableInputValues"
     ])
 
     const settings = {
-      trackClicks: result.trackClicks,
-      trackScrolling: result.trackScrolling,
-      trackNavigation: result.trackNavigation,
-      trackFormInteractions: result.trackFormInteractions
+      disableClicks: result.disableClicks || false,
+      disableScrolling: result.disableScrolling || false,
+      disableNavigation: result.disableNavigation || false,
+      disableFormInteractions: result.disableFormInteractions || false,
+      disableInputValues: result.disableInputValues || false
     }
 
-    // Check if this type of tracking is enabled
+    // Check if this type of tracking is DISABLED (opt-out logic)
     if (
-      (interaction.type === "click" && !settings.trackClicks) ||
-      (interaction.type === "scroll" && !settings.trackScrolling) ||
-      (interaction.type === "navigation" && !settings.trackNavigation) ||
-      (interaction.type === "form_interaction" && !settings.trackFormInteractions)
+      (interaction.type === "click" && settings.disableClicks) ||
+      (interaction.type === "scroll" && settings.disableScrolling) ||
+      (interaction.type === "navigation" && settings.disableNavigation) ||
+      (interaction.type === "form_interaction" && settings.disableFormInteractions) ||
+      (interaction.type === "input_value" && settings.disableInputValues)
     ) {
       console.log(`⏭️ Yukti: Skipping ${interaction.type} (disabled in settings)`)
       return
     }
 
     let interactions: UserInteraction[] = result.interactions || []
+    let interactionsByTab: InteractionsByTab = result.interactionsByTab || {}
 
-    // Add new interaction
+    // Add new interaction to flat array (keep for backward compatibility)
     interactions.push(interaction)
     console.log(`💾 Yukti: Stored ${interaction.type} interaction (Total: ${interactions.length})`)
+
+    // Add to hierarchical structure organized by tab and date
+    if (interaction.tabId) {
+      const tabKey = interaction.tabId.toString()
+      const dateKey = getDateKey(interaction.timestamp)
+
+      // Initialize tab data if doesn't exist
+      if (!interactionsByTab[tabKey]) {
+        interactionsByTab[tabKey] = {
+          tabId: interaction.tabId,
+          tabTitle: interaction.tabTitle || "Unknown Tab",
+          url: interaction.url,
+          dates: {}
+        }
+      }
+
+      // Update tab title and URL if available
+      if (interaction.tabTitle) {
+        interactionsByTab[tabKey].tabTitle = interaction.tabTitle
+      }
+      if (interaction.url) {
+        interactionsByTab[tabKey].url = interaction.url
+      }
+
+      // Initialize date array if doesn't exist
+      if (!interactionsByTab[tabKey].dates[dateKey]) {
+        interactionsByTab[tabKey].dates[dateKey] = []
+      }
+
+      // Add interaction to the specific date under the tab
+      interactionsByTab[tabKey].dates[dateKey].push(interaction)
+
+      console.log(`📋 Yukti: Organized under Tab ${interaction.tabId} → ${dateKey}`)
+    }
 
     // Limit storage size
     if (interactions.length > MAX_INTERACTIONS_STORED) {
@@ -97,15 +180,166 @@ async function recordInteraction(interaction: UserInteraction) {
       console.log(`🗑️ Yukti: Trimmed to ${MAX_INTERACTIONS_STORED} interactions`)
     }
 
-    await chrome.storage.local.set({ interactions })
+    await chrome.storage.local.set({ interactions, interactionsByTab })
 
     // Update patterns periodically (every 10 interactions)
     if (interactions.length % 10 === 0) {
       console.log("🧠 Yukti: Analyzing patterns...")
       await updatePatterns(interactions)
     }
+
+    // Check if we should send batch to server
+    await checkAndSendBatch(interactions.length, interaction)
   } catch (error) {
     console.error("Failed to record interaction:", error)
+  }
+}
+
+// Check and send batch to server
+async function checkAndSendBatch(totalInteractions: number, latestInteraction: UserInteraction) {
+  try {
+    const result = await chrome.storage.local.get(["batchCounter"])
+    let batchCounter = result.batchCounter || 0
+    batchCounter++
+
+    await chrome.storage.local.set({ batchCounter })
+
+    // Send to server every BATCH_SIZE interactions
+    if (batchCounter >= BATCH_SIZE) {
+      console.log(`🚀 Yukti: Sending batch to server (${batchCounter} interactions)`)
+      await sendToServer(latestInteraction)
+      await chrome.storage.local.set({ batchCounter: 0 }) // Reset counter
+    }
+  } catch (error) {
+    console.error("Failed to check batch:", error)
+  }
+}
+
+// Send interactions to server for AI analysis
+async function sendToServer(currentInteraction: UserInteraction) {
+  try {
+    const result = await chrome.storage.local.get(["interactions"])
+    const interactions: UserInteraction[] = result.interactions || []
+
+    // Take last 50 interactions for analysis
+    const recentInteractions = interactions.slice(-50)
+
+    // Prepare request payload
+    const payload = {
+      interactions: recentInteractions,
+      current_url: currentInteraction.url,
+      tab_id: currentInteraction.tabId,
+      timestamp: Date.now()
+    }
+
+    console.log(`📤 Yukti: Sending ${recentInteractions.length} interactions to server...`)
+
+    // Call server API
+    const response = await fetch(`${SERVER_URL}/api/analyze`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    })
+
+    if (!response.ok) {
+      throw new Error(`Server responded with ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    console.log(`✅ Yukti: Received response from server`)
+    console.log(`   Suggestions: ${data.suggestions?.length || 0}`)
+    console.log(`   Actions: ${data.actions?.length || 0}`)
+    console.log(`   Confidence: ${data.confidence?.toFixed(2) || 0}`)
+
+    // Store suggestions and actions for chatbot to retrieve
+    await chrome.storage.local.set({
+      serverSuggestions: data.suggestions || [],
+      serverActions: data.actions || [],
+      lastServerUpdate: Date.now()
+    })
+
+    // Notify chatbot about new suggestions
+    notifyChatbot()
+
+  } catch (error) {
+    console.error("❌ Yukti: Failed to send to server:", error)
+    // Store error for chatbot to display
+    await chrome.storage.local.set({
+      serverError: error.message,
+      serverSuggestions: [],
+      serverActions: []
+    })
+  }
+}
+
+// Notify chatbot about new suggestions
+function notifyChatbot() {
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, {
+          type: "SERVER_SUGGESTIONS_UPDATED"
+        }).catch(() => {
+          // Ignore errors for tabs without content script
+        })
+      }
+    })
+  })
+}
+
+// Get server suggestions (called by chatbot)
+async function getServerSuggestions() {
+  try {
+    const result = await chrome.storage.local.get([
+      "serverSuggestions",
+      "serverActions",
+      "lastServerUpdate",
+      "serverError"
+    ])
+
+    return {
+      suggestions: result.serverSuggestions || [],
+      actions: result.serverActions || [],
+      lastUpdate: result.lastServerUpdate || null,
+      error: result.serverError || null
+    }
+  } catch (error) {
+    console.error("Failed to get server suggestions:", error)
+    return {
+      suggestions: [],
+      actions: [],
+      lastUpdate: null,
+      error: error.message
+    }
+  }
+}
+
+// Log action execution to server
+async function logActionExecution(action: any, success: boolean) {
+  try {
+    const payload = {
+      action_type: action.type,
+      success: success,
+      details: action
+    }
+
+    await fetch(`${SERVER_URL}/api/action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    })
+
+    console.log(`📝 Yukti: Logged action execution: ${action.type}`)
+
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to log action:", error)
+    return { success: false, error: error.message }
   }
 }
 
@@ -299,4 +533,45 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
 })
 
-console.log("Yukti: Background service worker initialized")
+// Tab lifecycle tracking
+chrome.tabs.onCreated.addListener((tab) => {
+  const interaction: UserInteraction = {
+    type: "tab_opened",
+    timestamp: Date.now(),
+    url: tab.url || tab.pendingUrl || "about:blank",
+    tabId: tab.id,
+    windowId: tab.windowId,
+    tabTitle: tab.title
+  }
+  recordInteraction(interaction)
+  console.log(`📂 Yukti: Tab opened (ID: ${tab.id})`)
+})
+
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  const interaction: UserInteraction = {
+    type: "tab_closed",
+    timestamp: Date.now(),
+    url: "", // URL not available on close
+    tabId: tabId,
+    windowId: removeInfo.windowId
+  }
+  recordInteraction(interaction)
+  console.log(`📕 Yukti: Tab closed (ID: ${tabId})`)
+})
+
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  chrome.tabs.get(activeInfo.tabId, (tab) => {
+    const interaction: UserInteraction = {
+      type: "tab_activated",
+      timestamp: Date.now(),
+      url: tab.url || "",
+      tabId: tab.id,
+      windowId: tab.windowId,
+      tabTitle: tab.title
+    }
+    recordInteraction(interaction)
+    console.log(`🔄 Yukti: Tab activated (ID: ${tab.id})`)
+  })
+})
+
+console.log("Yukti: Background service worker initialized with tab tracking")

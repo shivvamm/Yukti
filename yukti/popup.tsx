@@ -1,5 +1,30 @@
 import { useEffect, useState } from "react"
 
+interface UserInteraction {
+  type: string
+  timestamp: number
+  url: string
+  elementType?: string
+  elementId?: string
+  elementClass?: string
+  elementText?: string
+  timeSpent?: number
+  scrollDepth?: number
+}
+
+interface TabData {
+  tabId: number
+  tabTitle: string
+  url: string
+  dates: {
+    [dateKey: string]: UserInteraction[]
+  }
+}
+
+interface InteractionsByTab {
+  [tabId: string]: TabData
+}
+
 interface Stats {
   totalInteractions: number
   topUrls: { url: string; count: number }[]
@@ -11,46 +36,104 @@ type Tab = "home" | "settings" | "data" | "about"
 
 function IndexPopup() {
   const [activeTab, setActiveTab] = useState<Tab>("home")
-  const [trackingEnabled, setTrackingEnabled] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
-  const [showConsent, setShowConsent] = useState(false)
+  const [interactionsByTab, setInteractionsByTab] = useState<InteractionsByTab>({})
+  const [expandedTabs, setExpandedTabs] = useState<{ [tabId: string]: boolean }>({})
+  const [expandedDates, setExpandedDates] = useState<{ [key: string]: boolean }>({})
 
-  // Settings
-  const [trackClicks, setTrackClicks] = useState(true)
-  const [trackScrolling, setTrackScrolling] = useState(true)
-  const [trackNavigation, setTrackNavigation] = useState(true)
-  const [trackFormInteractions, setTrackFormInteractions] = useState(false)
+  // Settings (opt-out: true = don't track)
+  const [disableClicks, setDisableClicks] = useState(false)
+  const [disableScrolling, setDisableScrolling] = useState(false)
+  const [disableNavigation, setDisableNavigation] = useState(false)
+  const [disableFormInteractions, setDisableFormInteractions] = useState(false)
+  const [disableInputValues, setDisableInputValues] = useState(false)
+
+  // Add CSS for toggle switches
+  const toggleCSS = `
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #cbd5e1;
+      transition: 0.4s;
+      border-radius: 24px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: 0.4s;
+      border-radius: 50%;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background-color: #4f46e5;
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+    }
+  `
 
   // Load initial state
   useEffect(() => {
     loadSettings()
     loadSuggestions()
     loadStats()
+    loadInteractionsByTab()
   }, [])
+
+  async function loadInteractionsByTab() {
+    try {
+      const result = await chrome.storage.local.get(["interactionsByTab"])
+      setInteractionsByTab(result.interactionsByTab || {})
+    } catch (error) {
+      console.error("Failed to load interactions by tab:", error)
+    }
+  }
+
+  function toggleTab(tabId: string) {
+    setExpandedTabs((prev) => ({ ...prev, [tabId]: !prev[tabId] }))
+  }
+
+  function toggleDate(tabId: string, dateKey: string) {
+    const key = `${tabId}-${dateKey}`
+    setExpandedDates((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  function formatTime(timestamp: number): string {
+    return new Date(timestamp).toLocaleTimeString()
+  }
 
   async function loadSettings() {
     const result = await chrome.storage.local.get([
-      "trackingEnabled",
-      "isPaused",
-      "trackClicks",
-      "trackScrolling",
-      "trackNavigation",
-      "trackFormInteractions"
+      "disableClicks",
+      "disableScrolling",
+      "disableNavigation",
+      "disableFormInteractions",
+      "disableInputValues"
     ])
 
-    setTrackingEnabled(result.trackingEnabled || false)
-    setIsPaused(result.isPaused || false)
-    setTrackClicks(result.trackClicks !== false)
-    setTrackScrolling(result.trackScrolling !== false)
-    setTrackNavigation(result.trackNavigation !== false)
-    setTrackFormInteractions(result.trackFormInteractions || false)
-
-    // Show consent if never set
-    if (result.trackingEnabled === undefined) {
-      setShowConsent(true)
-    }
+    setDisableClicks(result.disableClicks || false)
+    setDisableScrolling(result.disableScrolling || false)
+    setDisableNavigation(result.disableNavigation || false)
+    setDisableFormInteractions(result.disableFormInteractions || false)
+    setDisableInputValues(result.disableInputValues || false)
   }
 
   async function loadSuggestions() {
@@ -75,60 +158,24 @@ function IndexPopup() {
     }
   }
 
-  async function handleConsentAccept() {
-    await chrome.storage.local.set({ trackingEnabled: true })
-    setTrackingEnabled(true)
-    setShowConsent(false)
-    loadSuggestions()
-  }
-
-  async function handleConsentDecline() {
-    await chrome.storage.local.set({ trackingEnabled: false })
-    setTrackingEnabled(false)
-    setShowConsent(false)
-  }
-
-  async function toggleTracking() {
-    const newValue = !trackingEnabled
-    await chrome.storage.local.set({ trackingEnabled: newValue })
-    setTrackingEnabled(newValue)
-    if (newValue) {
-      loadSuggestions()
-    }
-  }
-
-  async function togglePause() {
-    const newValue = !isPaused
-    await chrome.storage.local.set({ isPaused: newValue })
-    setIsPaused(newValue)
-
-    // Notify content scripts
-    chrome.tabs.query({}, (tabs) => {
-      tabs.forEach((tab) => {
-        if (tab.id) {
-          chrome.tabs.sendMessage(tab.id, {
-            type: newValue ? "PAUSE_TRACKING" : "RESUME_TRACKING"
-          })
-        }
-      })
-    })
-  }
-
   async function updateSetting(key: string, value: boolean) {
     await chrome.storage.local.set({ [key]: value })
 
     switch (key) {
-      case "trackClicks":
-        setTrackClicks(value)
+      case "disableClicks":
+        setDisableClicks(value)
         break
-      case "trackScrolling":
-        setTrackScrolling(value)
+      case "disableScrolling":
+        setDisableScrolling(value)
         break
-      case "trackNavigation":
-        setTrackNavigation(value)
+      case "disableNavigation":
+        setDisableNavigation(value)
         break
-      case "trackFormInteractions":
-        setTrackFormInteractions(value)
+      case "disableFormInteractions":
+        setDisableFormInteractions(value)
+        break
+      case "disableInputValues":
+        setDisableInputValues(value)
         break
     }
   }
@@ -161,60 +208,19 @@ function IndexPopup() {
     }
   }
 
-  if (showConsent) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.consent}>
-          <h2 style={styles.title}>Welcome to Yukti</h2>
-          <p style={styles.text}>
-            Yukti learns from your browsing behavior to provide intelligent suggestions.
-          </p>
-
-          <div style={styles.consentSection}>
-            <h3 style={styles.subtitle}>What we track:</h3>
-            <ul style={styles.list}>
-              <li>Pages you visit</li>
-              <li>Elements you click</li>
-              <li>Scroll behavior</li>
-              <li>Time spent on pages</li>
-            </ul>
-          </div>
-
-          <div style={styles.consentSection}>
-            <h3 style={styles.subtitle}>Privacy guarantees:</h3>
-            <ul style={styles.list}>
-              <li>All data stays on YOUR device</li>
-              <li>No password or payment info tracked</li>
-              <li>Banking/healthcare sites blocked</li>
-              <li>You can delete data anytime</li>
-            </ul>
-          </div>
-
-          <div style={styles.buttonGroup}>
-            <button onClick={handleConsentAccept} style={styles.primaryButton}>
-              Accept & Enable
-            </button>
-            <button onClick={handleConsentDecline} style={styles.secondaryButton}>
-              Decline
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div style={styles.container}>
+      <style>{toggleCSS}</style>
       <div style={styles.header}>
         <h1 style={styles.mainTitle}>Yukti</h1>
         <div style={styles.statusBadge}>
           <span
             style={{
               ...styles.statusDot,
-              backgroundColor: trackingEnabled && !isPaused ? "#10b981" : "#ef4444"
+              backgroundColor: "#10b981"
             }}
           />
-          {trackingEnabled ? (isPaused ? "Paused" : "Active") : "Disabled"}
+          Active
         </div>
       </div>
 
@@ -245,22 +251,16 @@ function IndexPopup() {
         {activeTab === "home" && (
           <div>
             <h2 style={styles.sectionTitle}>Suggestions</h2>
-            {!trackingEnabled ? (
-              <div style={styles.warning}>
-                <p>Tracking is disabled. Enable it in Settings to get suggestions.</p>
-              </div>
-            ) : (
-              <div style={styles.suggestions}>
-                {suggestions.map((suggestion, index) => (
-                  <div key={index} style={styles.suggestionItem}>
-                    <span style={styles.suggestionIcon}>💡</span>
-                    <p style={styles.suggestionText}>{suggestion}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div style={styles.suggestions}>
+              {suggestions.map((suggestion, index) => (
+                <div key={index} style={styles.suggestionItem}>
+                  <span style={styles.suggestionIcon}>💡</span>
+                  <p style={styles.suggestionText}>{suggestion}</p>
+                </div>
+              ))}
+            </div>
 
-            {stats && trackingEnabled && (
+            {stats && (
               <div style={styles.statsSection}>
                 <h3 style={styles.subtitle}>Quick Stats</h3>
                 <div style={styles.statGrid}>
@@ -282,95 +282,86 @@ function IndexPopup() {
           <div>
             <h2 style={styles.sectionTitle}>Privacy Settings</h2>
 
-            <div style={styles.setting}>
-              <div>
-                <div style={styles.settingLabel}>Enable Tracking</div>
-                <div style={styles.settingDesc}>Allow Yukti to learn from your behavior</div>
-              </div>
-              <label style={styles.switch}>
-                <input type="checkbox" checked={trackingEnabled} onChange={toggleTracking} />
-                <span style={styles.slider}></span>
-              </label>
-            </div>
-
-            {trackingEnabled && (
-              <>
-                <div style={styles.setting}>
-                  <div>
-                    <div style={styles.settingLabel}>Pause Tracking</div>
-                    <div style={styles.settingDesc}>Temporarily stop tracking</div>
-                  </div>
-                  <label style={styles.switch}>
-                    <input type="checkbox" checked={isPaused} onChange={togglePause} />
-                    <span style={styles.slider}></span>
-                  </label>
-                </div>
-
-                <h3 style={styles.subtitle}>What to Track</h3>
+            <h3 style={styles.subtitle}>What NOT to Track</h3>
 
                 <div style={styles.setting}>
                   <div>
-                    <div style={styles.settingLabel}>Clicks</div>
-                    <div style={styles.settingDesc}>Track elements you click</div>
+                    <div style={styles.settingLabel}>Disable Clicks</div>
+                    <div style={styles.settingDesc}>Stop tracking elements you click</div>
                   </div>
-                  <label style={styles.switch}>
+                  <label className="toggle-switch" style={styles.switch}>
                     <input
                       type="checkbox"
-                      checked={trackClicks}
-                      onChange={(e) => updateSetting("trackClicks", e.target.checked)}
+                      checked={disableClicks}
+                      onChange={(e) => updateSetting("disableClicks", e.target.checked)}
                     />
-                    <span style={styles.slider}></span>
+                    <span className="toggle-slider"></span>
                   </label>
                 </div>
 
                 <div style={styles.setting}>
                   <div>
-                    <div style={styles.settingLabel}>Scrolling</div>
-                    <div style={styles.settingDesc}>Track scroll depth on pages</div>
+                    <div style={styles.settingLabel}>Disable Scrolling</div>
+                    <div style={styles.settingDesc}>Stop tracking scroll depth on pages</div>
                   </div>
-                  <label style={styles.switch}>
+                  <label className="toggle-switch" style={styles.switch}>
                     <input
                       type="checkbox"
-                      checked={trackScrolling}
-                      onChange={(e) => updateSetting("trackScrolling", e.target.checked)}
+                      checked={disableScrolling}
+                      onChange={(e) => updateSetting("disableScrolling", e.target.checked)}
                     />
-                    <span style={styles.slider}></span>
+                    <span className="toggle-slider"></span>
                   </label>
                 </div>
 
                 <div style={styles.setting}>
                   <div>
-                    <div style={styles.settingLabel}>Navigation</div>
-                    <div style={styles.settingDesc}>Track pages you visit</div>
+                    <div style={styles.settingLabel}>Disable Navigation</div>
+                    <div style={styles.settingDesc}>Stop tracking pages you visit</div>
                   </div>
-                  <label style={styles.switch}>
+                  <label className="toggle-switch" style={styles.switch}>
                     <input
                       type="checkbox"
-                      checked={trackNavigation}
-                      onChange={(e) => updateSetting("trackNavigation", e.target.checked)}
+                      checked={disableNavigation}
+                      onChange={(e) => updateSetting("disableNavigation", e.target.checked)}
                     />
-                    <span style={styles.slider}></span>
+                    <span className="toggle-slider"></span>
                   </label>
                 </div>
 
                 <div style={styles.setting}>
                   <div>
-                    <div style={styles.settingLabel}>Form Interactions</div>
+                    <div style={styles.settingLabel}>Disable Form Focus</div>
                     <div style={styles.settingDesc}>
-                      Track non-sensitive form fields (passwords excluded)
+                      Stop tracking when you click into form fields
                     </div>
                   </div>
-                  <label style={styles.switch}>
+                  <label className="toggle-switch" style={styles.switch}>
                     <input
                       type="checkbox"
-                      checked={trackFormInteractions}
-                      onChange={(e) => updateSetting("trackFormInteractions", e.target.checked)}
+                      checked={disableFormInteractions}
+                      onChange={(e) => updateSetting("disableFormInteractions", e.target.checked)}
                     />
-                    <span style={styles.slider}></span>
+                    <span className="toggle-slider"></span>
                   </label>
                 </div>
-              </>
-            )}
+
+                <div style={styles.setting}>
+                  <div>
+                    <div style={styles.settingLabel}>Disable Input Values</div>
+                    <div style={styles.settingDesc}>
+                      Stop tracking what you type (passwords NEVER tracked)
+                    </div>
+                  </div>
+                  <label className="toggle-switch" style={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={disableInputValues}
+                      onChange={(e) => updateSetting("disableInputValues", e.target.checked)}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
           </div>
         )}
 
@@ -387,22 +378,67 @@ function IndexPopup() {
                   <strong>Tracking Since:</strong>{" "}
                   {new Date(stats.trackingSince).toLocaleDateString()}
                 </p>
-
-                {stats.topUrls.length > 0 && (
-                  <div style={styles.topSites}>
-                    <h3 style={styles.subtitle}>Top Sites</h3>
-                    {stats.topUrls.map((url, index) => (
-                      <div key={index} style={styles.urlItem}>
-                        <span style={styles.urlRank}>{index + 1}.</span>
-                        <span style={styles.urlText}>
-                          {new URL(url.url).hostname} ({url.count} visits)
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
+
+            <h3 style={styles.subtitle}>Interactions by Tab & Date</h3>
+            <div style={styles.tabList}>
+              {Object.keys(interactionsByTab).length === 0 ? (
+                <p style={styles.emptyMessage}>No tab data yet. Start browsing to see your interactions!</p>
+              ) : (
+                Object.entries(interactionsByTab).map(([tabId, tabData]) => (
+                  <div key={tabId} style={styles.tabCard}>
+                    <div style={styles.tabHeader} onClick={() => toggleTab(tabId)}>
+                      <span style={styles.expandIcon}>{expandedTabs[tabId] ? "▼" : "▶"}</span>
+                      <div style={styles.tabInfo}>
+                        <div style={styles.tabTitle}>{tabData.tabTitle}</div>
+                        <div style={styles.tabUrl}>{new URL(tabData.url).hostname}</div>
+                      </div>
+                    </div>
+
+                    {expandedTabs[tabId] && (
+                      <div style={styles.dateList}>
+                        {Object.entries(tabData.dates).map(([dateKey, interactions]) => (
+                          <div key={dateKey} style={styles.dateCard}>
+                            <div
+                              style={styles.dateHeader}
+                              onClick={() => toggleDate(tabId, dateKey)}>
+                              <span style={styles.expandIcon}>
+                                {expandedDates[`${tabId}-${dateKey}`] ? "▼" : "▶"}
+                              </span>
+                              <div style={styles.dateInfo}>
+                                <span style={styles.dateText}>{dateKey}</span>
+                                <span style={styles.countBadge}>
+                                  {interactions.length} actions
+                                </span>
+                              </div>
+                            </div>
+
+                            {expandedDates[`${tabId}-${dateKey}`] && (
+                              <div style={styles.interactionList}>
+                                {interactions.map((interaction, index) => (
+                                  <div key={index} style={styles.interactionItem}>
+                                    <span style={styles.interactionTime}>
+                                      {formatTime(interaction.timestamp)}
+                                    </span>
+                                    <span style={styles.interactionType}>{interaction.type}</span>
+                                    {interaction.elementType && (
+                                      <span style={styles.interactionDetail}>
+                                        {interaction.elementType}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
 
             <div style={styles.buttonGroup}>
               <button onClick={exportData} style={styles.primaryButton}>
@@ -443,8 +479,8 @@ function IndexPopup() {
 
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
-    width: 450,
-    minHeight: 500,
+    width: 320,
+    minHeight: 350,
     fontFamily: "system-ui, -apple-system, sans-serif",
     backgroundColor: "#f9fafb",
     color: "#111827"
@@ -452,24 +488,24 @@ const styles: { [key: string]: React.CSSProperties } = {
   header: {
     backgroundColor: "#4f46e5",
     color: "white",
-    padding: "16px 20px",
+    padding: "12px 16px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center"
   },
   mainTitle: {
     margin: 0,
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "bold"
   },
   statusBadge: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     backgroundColor: "rgba(255, 255, 255, 0.2)",
-    padding: "6px 12px",
-    borderRadius: 16,
-    fontSize: 14
+    padding: "4px 10px",
+    borderRadius: 12,
+    fontSize: 12
   },
   statusDot: {
     width: 8,
@@ -483,29 +519,29 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   tab: {
     flex: 1,
-    padding: "12px 16px",
+    padding: "10px 12px",
     border: "none",
     backgroundColor: "transparent",
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: 13,
     color: "#6b7280",
     borderBottom: "2px solid transparent",
     transition: "all 0.2s"
   },
   tabActive: {
     flex: 1,
-    padding: "12px 16px",
+    padding: "10px 12px",
     border: "none",
     backgroundColor: "transparent",
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: 13,
     color: "#4f46e5",
     borderBottom: "2px solid #4f46e5",
     fontWeight: 600
   },
   content: {
-    padding: 20,
-    maxHeight: 400,
+    padding: 12,
+    maxHeight: 280,
     overflowY: "auto"
   },
   consent: {
@@ -535,6 +571,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: 16,
     fontWeight: 600,
     color: "#111827"
+  },
+  optOutDesc: {
+    margin: "0 0 16px 0",
+    fontSize: 13,
+    color: "#ef4444",
+    lineHeight: 1.5,
+    fontWeight: 500
   },
   list: {
     margin: 0,
@@ -585,8 +628,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     transition: "background-color 0.2s"
   },
   sectionTitle: {
-    margin: "0 0 16px 0",
-    fontSize: 20,
+    margin: "0 0 12px 0",
+    fontSize: 16,
     fontWeight: "bold",
     color: "#111827"
   },
@@ -702,6 +745,110 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   urlText: {
     flex: 1
+  },
+  tabList: {
+    marginBottom: 16
+  },
+  tabCard: {
+    backgroundColor: "white",
+    border: "1px solid #e5e7eb",
+    borderRadius: 8,
+    marginBottom: 12,
+    overflow: "hidden"
+  },
+  tabHeader: {
+    display: "flex",
+    alignItems: "center",
+    padding: 12,
+    cursor: "pointer",
+    gap: 8,
+    backgroundColor: "#f9fafb"
+  },
+  tabInfo: {
+    flex: 1
+  },
+  tabTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "#111827",
+    marginBottom: 4
+  },
+  tabUrl: {
+    fontSize: 12,
+    color: "#6b7280"
+  },
+  expandIcon: {
+    fontSize: 12,
+    color: "#6b7280",
+    width: 16
+  },
+  dateList: {
+    padding: 8
+  },
+  dateCard: {
+    backgroundColor: "#fefefe",
+    border: "1px solid #e5e7eb",
+    borderRadius: 6,
+    marginBottom: 8,
+    overflow: "hidden"
+  },
+  dateHeader: {
+    display: "flex",
+    alignItems: "center",
+    padding: 10,
+    cursor: "pointer",
+    gap: 8,
+    backgroundColor: "#f9fafb"
+  },
+  dateInfo: {
+    flex: 1,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  dateText: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#374151"
+  },
+  countBadge: {
+    fontSize: 11,
+    padding: "2px 8px",
+    backgroundColor: "#4f46e5",
+    color: "white",
+    borderRadius: 12,
+    fontWeight: 600
+  },
+  interactionList: {
+    padding: 8
+  },
+  interactionItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: 6,
+    fontSize: 12,
+    borderBottom: "1px solid #f3f4f6"
+  },
+  interactionTime: {
+    color: "#6b7280",
+    fontWeight: 500,
+    minWidth: 70
+  },
+  interactionType: {
+    color: "#4f46e5",
+    fontWeight: 600,
+    textTransform: "capitalize"
+  },
+  interactionDetail: {
+    color: "#9ca3af",
+    fontSize: 11
+  },
+  emptyMessage: {
+    textAlign: "center",
+    color: "#6b7280",
+    fontSize: 13,
+    padding: 20
   }
 }
 
