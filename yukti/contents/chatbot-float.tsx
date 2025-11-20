@@ -182,17 +182,13 @@ const FloatingChatbot = () => {
           top: `${position.y}px`,
           width: "52px",
           height: "52px",
-          background: hasSuggestion
-            ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-            : "linear-gradient(135deg, #2c3e50 0%, #3498db 100%)",
-          borderRadius: "16px",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           cursor: isDragging ? "grabbing" : "grab",
-          boxShadow: hasSuggestion
-            ? "0 8px 24px rgba(102, 126, 234, 0.4)"
-            : "0 8px 24px rgba(52, 152, 219, 0.3)",
+          filter: hasSuggestion
+            ? "drop-shadow(0 4px 12px rgba(102, 126, 234, 0.6))"
+            : "drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3))",
           zIndex: 999999,
           transition: isDragging ? "none" : "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
           userSelect: "none"
@@ -202,16 +198,16 @@ const FloatingChatbot = () => {
         onMouseEnter={(e) => {
           if (!isDragging) {
             e.currentTarget.style.transform = "scale(1.08)"
-            e.currentTarget.style.boxShadow = hasSuggestion
-              ? "0 12px 32px rgba(102, 126, 234, 0.5)"
-              : "0 12px 32px rgba(52, 152, 219, 0.4)"
+            e.currentTarget.style.filter = hasSuggestion
+              ? "drop-shadow(0 6px 16px rgba(102, 126, 234, 0.7))"
+              : "drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))"
           }
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.transform = "scale(1)"
-          e.currentTarget.style.boxShadow = hasSuggestion
-            ? "0 8px 24px rgba(102, 126, 234, 0.4)"
-            : "0 8px 24px rgba(52, 152, 219, 0.3)"
+          e.currentTarget.style.filter = hasSuggestion
+            ? "drop-shadow(0 4px 12px rgba(102, 126, 234, 0.6))"
+            : "drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3))"
         }}>
         <RobotIcon size={28} />
         {hasSuggestion && (
