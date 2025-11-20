@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import RobotIcon from "~components/RobotIcon"
 
 interface UserInteraction {
   type: string
@@ -49,7 +50,7 @@ function IndexPopup() {
   const [disableFormInteractions, setDisableFormInteractions] = useState(false)
   const [disableInputValues, setDisableInputValues] = useState(false)
 
-  // Add CSS for toggle switches
+  // Add CSS for toggle switches and scrollbar
   const toggleCSS = `
     .toggle-switch input {
       opacity: 0;
@@ -64,9 +65,10 @@ function IndexPopup() {
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: #cbd5e1;
-      transition: 0.4s;
-      border-radius: 24px;
+      background-color: #334155;
+      transition: 0.15s;
+      border-radius: 0;
+      border: 2px solid #1e293b;
     }
 
     .toggle-slider:before {
@@ -74,19 +76,42 @@ function IndexPopup() {
       content: "";
       height: 16px;
       width: 16px;
-      left: 4px;
-      bottom: 4px;
-      background-color: white;
-      transition: 0.4s;
-      border-radius: 50%;
+      left: 2px;
+      bottom: 2px;
+      background-color: #64748b;
+      transition: 0.15s;
+      border-radius: 0;
+      border: 2px solid #475569;
     }
 
     .toggle-switch input:checked + .toggle-slider {
-      background-color: #4f46e5;
+      background-color: #10b981;
+      border: 2px solid #059669;
     }
 
     .toggle-switch input:checked + .toggle-slider:before {
       transform: translateX(20px);
+      background-color: #0f172a;
+      border: 2px solid #10b981;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1e293b;
+      border-left: 2px solid #334155;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #06b6d4;
+      border: 2px solid #0891b2;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #0891b2;
     }
   `
 
@@ -107,11 +132,15 @@ function IndexPopup() {
     }
   }
 
-  function toggleTab(tabId: string) {
+  function toggleTab(tabId: string, e?: React.MouseEvent) {
+    e?.stopPropagation()
+    e?.preventDefault()
     setExpandedTabs((prev) => ({ ...prev, [tabId]: !prev[tabId] }))
   }
 
-  function toggleDate(tabId: string, dateKey: string) {
+  function toggleDate(tabId: string, dateKey: string, e?: React.MouseEvent) {
+    e?.stopPropagation()
+    e?.preventDefault()
     const key = `${tabId}-${dateKey}`
     setExpandedDates((prev) => ({ ...prev, [key]: !prev[key] }))
   }
@@ -212,7 +241,10 @@ function IndexPopup() {
     <div style={styles.container}>
       <style>{toggleCSS}</style>
       <div style={styles.header}>
-        <h1 style={styles.mainTitle}>Yukti</h1>
+        <div style={styles.headerLeft}>
+          <RobotIcon size={36} />
+          <h1 style={styles.mainTitle}>Yukti</h1>
+        </div>
         <div style={styles.statusBadge}>
           <span
             style={{
@@ -386,15 +418,23 @@ function IndexPopup() {
               {Object.keys(interactionsByTab).length === 0 ? (
                 <p style={styles.emptyMessage}>No tab data yet. Start browsing to see your interactions!</p>
               ) : (
-                Object.entries(interactionsByTab).map(([tabId, tabData]) => (
-                  <div key={tabId} style={styles.tabCard}>
-                    <div style={styles.tabHeader} onClick={() => toggleTab(tabId)}>
-                      <span style={styles.expandIcon}>{expandedTabs[tabId] ? "▼" : "▶"}</span>
-                      <div style={styles.tabInfo}>
-                        <div style={styles.tabTitle}>{tabData.tabTitle}</div>
-                        <div style={styles.tabUrl}>{new URL(tabData.url).hostname}</div>
+                Object.entries(interactionsByTab).map(([tabId, tabData]) => {
+                  let hostname = tabData.url
+                  try {
+                    hostname = new URL(tabData.url).hostname
+                  } catch (e) {
+                    // If URL parsing fails, use the raw URL
+                  }
+
+                  return (
+                    <div key={tabId} style={styles.tabCard}>
+                      <div style={styles.tabHeader} onClick={(e) => toggleTab(tabId, e)}>
+                        <span style={styles.expandIcon}>{expandedTabs[tabId] ? "▼" : "▶"}</span>
+                        <div style={styles.tabInfo}>
+                          <div style={styles.tabTitle}>{tabData.tabTitle}</div>
+                          <div style={styles.tabUrl}>{hostname}</div>
+                        </div>
                       </div>
-                    </div>
 
                     {expandedTabs[tabId] && (
                       <div style={styles.dateList}>
@@ -402,7 +442,7 @@ function IndexPopup() {
                           <div key={dateKey} style={styles.dateCard}>
                             <div
                               style={styles.dateHeader}
-                              onClick={() => toggleDate(tabId, dateKey)}>
+                              onClick={(e) => toggleDate(tabId, dateKey, e)}>
                               <span style={styles.expandIcon}>
                                 {expandedDates[`${tabId}-${dateKey}`] ? "▼" : "▶"}
                               </span>
@@ -435,8 +475,9 @@ function IndexPopup() {
                         ))}
                       </div>
                     )}
-                  </div>
-                ))
+                    </div>
+                  )
+                })
               )}
             </div>
 
@@ -479,70 +520,91 @@ function IndexPopup() {
 
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
-    width: 320,
+    width: 360,
     minHeight: 350,
-    fontFamily: "system-ui, -apple-system, sans-serif",
-    backgroundColor: "#f9fafb",
-    color: "#111827"
+    maxHeight: 600,
+    fontFamily: "'Courier New', 'Courier', monospace",
+    backgroundColor: "#0f172a",
+    color: "#e2e8f0",
+    overflow: "hidden"
   },
   header: {
-    backgroundColor: "#4f46e5",
-    color: "white",
-    padding: "12px 16px",
+    backgroundColor: "#1e293b",
+    color: "#e2e8f0",
+    padding: "16px",
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "center"
+    alignItems: "center",
+    borderBottom: "3px solid #06b6d4",
+    boxShadow: "0 2px 0 #334155"
+  },
+  headerLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12
   },
   mainTitle: {
     margin: 0,
-    fontSize: 20,
-    fontWeight: "bold"
+    fontSize: 22,
+    fontWeight: "bold",
+    letterSpacing: "2px",
+    textTransform: "uppercase"
   },
   statusBadge: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    padding: "4px 10px",
-    borderRadius: 12,
-    fontSize: 12
+    backgroundColor: "#334155",
+    padding: "6px 12px",
+    borderRadius: 0,
+    fontSize: 11,
+    fontWeight: "bold",
+    border: "2px solid #10b981",
+    letterSpacing: "1px"
   },
   statusDot: {
     width: 8,
     height: 8,
-    borderRadius: "50%"
+    borderRadius: 0
   },
   tabs: {
     display: "flex",
-    backgroundColor: "white",
-    borderBottom: "1px solid #e5e7eb"
+    backgroundColor: "#1e293b",
+    borderBottom: "3px solid #334155"
   },
   tab: {
     flex: 1,
-    padding: "10px 12px",
+    padding: "12px",
     border: "none",
-    backgroundColor: "transparent",
+    backgroundColor: "#1e293b",
     cursor: "pointer",
-    fontSize: 13,
-    color: "#6b7280",
-    borderBottom: "2px solid transparent",
-    transition: "all 0.2s"
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "bold",
+    letterSpacing: "1px",
+    textTransform: "uppercase",
+    transition: "all 0.15s",
+    borderRight: "2px solid #334155"
   },
   tabActive: {
     flex: 1,
-    padding: "10px 12px",
+    padding: "12px",
     border: "none",
-    backgroundColor: "transparent",
+    backgroundColor: "#334155",
     cursor: "pointer",
-    fontSize: 13,
-    color: "#4f46e5",
-    borderBottom: "2px solid #4f46e5",
-    fontWeight: 600
+    fontSize: 12,
+    color: "#06b6d4",
+    fontWeight: "bold",
+    letterSpacing: "1px",
+    textTransform: "uppercase",
+    borderRight: "2px solid #334155",
+    boxShadow: "inset 0 -3px 0 #06b6d4"
   },
   content: {
-    padding: 12,
-    maxHeight: 280,
-    overflowY: "auto"
+    padding: 16,
+    maxHeight: 400,
+    overflowY: "auto",
+    backgroundColor: "#0f172a"
   },
   consent: {
     padding: 30,
@@ -551,26 +613,29 @@ const styles: { [key: string]: React.CSSProperties } = {
   title: {
     margin: "0 0 16px 0",
     fontSize: 24,
-    color: "#111827"
+    color: "#e2e8f0"
   },
   text: {
     margin: "0 0 16px 0",
-    fontSize: 14,
-    color: "#6b7280",
-    lineHeight: 1.6
+    fontSize: 13,
+    color: "#94a3b8",
+    lineHeight: 1.7
   },
   consentSection: {
-    backgroundColor: "white",
+    backgroundColor: "#1e293b",
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 0,
     marginBottom: 16,
-    textAlign: "left"
+    textAlign: "left",
+    border: "2px solid #334155"
   },
   subtitle: {
-    margin: "0 0 12px 0",
-    fontSize: 16,
-    fontWeight: 600,
-    color: "#111827"
+    margin: "0 0 14px 0",
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#06b6d4",
+    textTransform: "uppercase",
+    letterSpacing: "1.5px"
   },
   optOutDesc: {
     margin: "0 0 16px 0",
@@ -582,8 +647,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   list: {
     margin: 0,
     paddingLeft: 20,
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    color: "#94a3b8",
     lineHeight: 1.8
   },
   buttonGroup: {
@@ -593,52 +658,63 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   primaryButton: {
     flex: 1,
-    padding: "10px 20px",
-    backgroundColor: "#4f46e5",
-    color: "white",
-    border: "none",
-    borderRadius: 6,
+    padding: "12px 20px",
+    backgroundColor: "#06b6d4",
+    color: "#0f172a",
+    border: "3px solid #0891b2",
+    borderRadius: 0,
     cursor: "pointer",
-    fontSize: 14,
-    fontWeight: 600,
-    transition: "background-color 0.2s"
+    fontSize: 12,
+    fontWeight: "bold",
+    letterSpacing: "1px",
+    textTransform: "uppercase",
+    transition: "all 0.15s",
+    boxShadow: "0 3px 0 #0891b2"
   },
   secondaryButton: {
     flex: 1,
-    padding: "10px 20px",
-    backgroundColor: "#e5e7eb",
-    color: "#111827",
-    border: "none",
-    borderRadius: 6,
+    padding: "12px 20px",
+    backgroundColor: "#334155",
+    color: "#e2e8f0",
+    border: "3px solid #1e293b",
+    borderRadius: 0,
     cursor: "pointer",
-    fontSize: 14,
-    fontWeight: 600,
-    transition: "background-color 0.2s"
+    fontSize: 12,
+    fontWeight: "bold",
+    letterSpacing: "1px",
+    textTransform: "uppercase",
+    transition: "all 0.15s",
+    boxShadow: "0 3px 0 #1e293b"
   },
   dangerButton: {
     flex: 1,
-    padding: "10px 20px",
+    padding: "12px 20px",
     backgroundColor: "#ef4444",
-    color: "white",
-    border: "none",
-    borderRadius: 6,
+    color: "#ffffff",
+    border: "3px solid #dc2626",
+    borderRadius: 0,
     cursor: "pointer",
-    fontSize: 14,
-    fontWeight: 600,
-    transition: "background-color 0.2s"
+    fontSize: 12,
+    fontWeight: "bold",
+    letterSpacing: "1px",
+    textTransform: "uppercase",
+    transition: "all 0.15s",
+    boxShadow: "0 3px 0 #dc2626"
   },
   sectionTitle: {
-    margin: "0 0 12px 0",
-    fontSize: 16,
+    margin: "0 0 16px 0",
+    fontSize: 15,
     fontWeight: "bold",
-    color: "#111827"
+    color: "#10b981",
+    textTransform: "uppercase",
+    letterSpacing: "2px"
   },
   warning: {
-    backgroundColor: "#fef3c7",
-    border: "1px solid #fcd34d",
+    backgroundColor: "#451a03",
+    border: "3px solid #f59e0b",
     padding: 16,
-    borderRadius: 8,
-    color: "#92400e"
+    borderRadius: 0,
+    color: "#fbbf24"
   },
   suggestions: {
     display: "flex",
@@ -648,26 +724,28 @@ const styles: { [key: string]: React.CSSProperties } = {
   suggestionItem: {
     display: "flex",
     gap: 12,
-    backgroundColor: "white",
-    padding: 16,
-    borderRadius: 8,
-    border: "1px solid #e5e7eb"
+    backgroundColor: "#1e293b",
+    padding: 14,
+    borderRadius: 0,
+    border: "2px solid #334155",
+    borderLeft: "4px solid #10b981"
   },
   suggestionIcon: {
     fontSize: 20
   },
   suggestionText: {
     margin: 0,
-    fontSize: 14,
-    color: "#374151",
+    fontSize: 13,
+    color: "#cbd5e1",
     lineHeight: 1.6
   },
   statsSection: {
-    marginTop: 24,
-    backgroundColor: "white",
+    marginTop: 20,
+    backgroundColor: "#1e293b",
     padding: 16,
-    borderRadius: 8,
-    border: "1px solid #e5e7eb"
+    borderRadius: 0,
+    border: "3px solid #334155",
+    boxShadow: "0 3px 0 #334155"
   },
   statGrid: {
     display: "grid",
@@ -675,34 +753,44 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: 16
   },
   statItem: {
-    textAlign: "center"
+    textAlign: "center",
+    padding: 12,
+    backgroundColor: "#0f172a",
+    border: "2px solid #334155"
   },
   statValue: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#4f46e5"
+    color: "#06b6d4",
+    fontFamily: "'Courier New', monospace"
   },
   statLabel: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginTop: 4
+    fontSize: 11,
+    color: "#64748b",
+    marginTop: 6,
+    textTransform: "uppercase",
+    letterSpacing: "1px",
+    fontWeight: "bold"
   },
   setting: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "16px 0",
-    borderBottom: "1px solid #e5e7eb"
+    padding: "14px",
+    borderBottom: "2px solid #334155",
+    backgroundColor: "#1e293b",
+    marginBottom: 8
   },
   settingLabel: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: "#111827",
-    marginBottom: 4
+    fontSize: 13,
+    fontWeight: "bold",
+    color: "#e2e8f0",
+    marginBottom: 4,
+    letterSpacing: "0.5px"
   },
   settingDesc: {
-    fontSize: 12,
-    color: "#6b7280"
+    fontSize: 11,
+    color: "#64748b"
   },
   switch: {
     position: "relative",
@@ -710,23 +798,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: 44,
     height: 24
   },
-  slider: {
-    position: "absolute",
-    cursor: "pointer",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "#cbd5e1",
-    transition: "0.4s",
-    borderRadius: 24
-  },
   dataSection: {
-    backgroundColor: "white",
+    backgroundColor: "#1e293b",
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 0,
     marginBottom: 16,
-    border: "1px solid #e5e7eb"
+    border: "3px solid #334155",
+    boxShadow: "0 3px 0 #334155"
   },
   topSites: {
     marginTop: 16
@@ -735,13 +813,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: "flex",
     alignItems: "center",
     padding: "8px 0",
-    fontSize: 14,
-    color: "#374151"
+    fontSize: 13,
+    color: "#cbd5e1"
   },
   urlRank: {
     fontWeight: "bold",
     marginRight: 8,
-    color: "#4f46e5"
+    color: "#06b6d4"
   },
   urlText: {
     flex: 1
@@ -750,9 +828,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: 16
   },
   tabCard: {
-    backgroundColor: "white",
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
+    backgroundColor: "#1e293b",
+    border: "2px solid #334155",
+    borderRadius: 0,
     marginBottom: 12,
     overflow: "hidden"
   },
@@ -762,33 +840,37 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: 12,
     cursor: "pointer",
     gap: 8,
-    backgroundColor: "#f9fafb"
+    backgroundColor: "#334155",
+    borderBottom: "2px solid #06b6d4"
   },
   tabInfo: {
     flex: 1
   },
   tabTitle: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: "#111827",
-    marginBottom: 4
+    fontSize: 13,
+    fontWeight: "bold",
+    color: "#e2e8f0",
+    marginBottom: 4,
+    letterSpacing: "0.5px"
   },
   tabUrl: {
-    fontSize: 12,
-    color: "#6b7280"
+    fontSize: 11,
+    color: "#64748b"
   },
   expandIcon: {
     fontSize: 12,
-    color: "#6b7280",
-    width: 16
+    color: "#06b6d4",
+    width: 16,
+    fontWeight: "bold"
   },
   dateList: {
-    padding: 8
+    padding: 8,
+    backgroundColor: "#0f172a"
   },
   dateCard: {
-    backgroundColor: "#fefefe",
-    border: "1px solid #e5e7eb",
-    borderRadius: 6,
+    backgroundColor: "#1e293b",
+    border: "2px solid #334155",
+    borderRadius: 0,
     marginBottom: 8,
     overflow: "hidden"
   },
@@ -798,7 +880,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: 10,
     cursor: "pointer",
     gap: 8,
-    backgroundColor: "#f9fafb"
+    backgroundColor: "#334155"
   },
   dateInfo: {
     flex: 1,
@@ -807,48 +889,56 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: "center"
   },
   dateText: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#374151"
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#94a3b8",
+    letterSpacing: "0.5px"
   },
   countBadge: {
-    fontSize: 11,
-    padding: "2px 8px",
-    backgroundColor: "#4f46e5",
-    color: "white",
-    borderRadius: 12,
-    fontWeight: 600
+    fontSize: 10,
+    padding: "4px 8px",
+    backgroundColor: "#10b981",
+    color: "#0f172a",
+    borderRadius: 0,
+    fontWeight: "bold",
+    letterSpacing: "0.5px",
+    border: "2px solid #059669"
   },
   interactionList: {
-    padding: 8
+    padding: 8,
+    backgroundColor: "#0f172a"
   },
   interactionItem: {
     display: "flex",
     alignItems: "center",
     gap: 8,
     padding: 6,
-    fontSize: 12,
-    borderBottom: "1px solid #f3f4f6"
+    fontSize: 11,
+    borderBottom: "1px solid #1e293b"
   },
   interactionTime: {
-    color: "#6b7280",
-    fontWeight: 500,
-    minWidth: 70
+    color: "#64748b",
+    fontWeight: "bold",
+    minWidth: 70,
+    fontFamily: "'Courier New', monospace"
   },
   interactionType: {
-    color: "#4f46e5",
-    fontWeight: 600,
-    textTransform: "capitalize"
+    color: "#06b6d4",
+    fontWeight: "bold",
+    textTransform: "uppercase",
+    fontSize: 10,
+    letterSpacing: "0.5px"
   },
   interactionDetail: {
-    color: "#9ca3af",
-    fontSize: 11
+    color: "#475569",
+    fontSize: 10
   },
   emptyMessage: {
     textAlign: "center",
-    color: "#6b7280",
-    fontSize: 13,
-    padding: 20
+    color: "#64748b",
+    fontSize: 12,
+    padding: 20,
+    fontStyle: "italic"
   }
 }
 
