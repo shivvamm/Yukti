@@ -1,21 +1,14 @@
 import type { PlasmoCSConfig } from "plasmo"
 import { useState, useEffect } from "react"
+import RobotIcon from "~components/RobotIcon"
 
 export const config: PlasmoCSConfig = {
   matches: ["<all_urls>"],
   all_frames: false
 }
 
-interface Action {
-  type: string
-  target?: string
-  value?: string
-  confidence: number
-}
-
 interface ServerResponse {
   suggestions: string[]
-  actions: Action[]
   lastUpdate: number | null
   error: string | null
 }
@@ -25,13 +18,12 @@ const FloatingChatbot = () => {
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [autoHideTimer, setAutoHideTimer] = useState<NodeJS.Timeout | null>(null)
   const [serverData, setServerData] = useState<ServerResponse>({
     suggestions: [],
-    actions: [],
     lastUpdate: null,
     error: null
   })
-  const [executing, setExecuting] = useState<string | null>(null)
 
   // Fetch server suggestions
   const fetchServerSuggestions = async () => {
@@ -56,20 +48,43 @@ const FloatingChatbot = () => {
     return () => clearInterval(interval)
   }, [])
 
+  // Function to hide suggestions and clear timer
+  const hideSuggestions = () => {
+    setShowSuggestions(false)
+    if (autoHideTimer) {
+      clearTimeout(autoHideTimer)
+      setAutoHideTimer(null)
+    }
+  }
+
   // Listen for server update notifications
   useEffect(() => {
     const handleMessage = (message: any) => {
       if (message.type === "SERVER_SUGGESTIONS_UPDATED") {
         console.log("Chatbot: Server suggestions updated!")
         fetchServerSuggestions()
-        // Auto-open suggestions when new data arrives
+
+        // Clear any existing timer
+        if (autoHideTimer) {
+          clearTimeout(autoHideTimer)
+        }
+
+        // Auto-show suggestions when new data arrives
         setShowSuggestions(true)
+
+        // Set 5-second auto-hide timer
+        const timer = setTimeout(() => {
+          setShowSuggestions(false)
+          setAutoHideTimer(null)
+        }, 5000)
+
+        setAutoHideTimer(timer)
       }
     }
 
     chrome.runtime.onMessage.addListener(handleMessage)
     return () => chrome.runtime.onMessage.removeListener(handleMessage)
-  }, [])
+  }, [autoHideTimer])
 
   // Drag handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -107,339 +122,154 @@ const FloatingChatbot = () => {
     }
   }, [isDragging, dragOffset])
 
-  const toggleSuggestions = () => {
-    setShowSuggestions(!showSuggestions)
-  }
+  const hasSuggestion = serverData.suggestions.length > 0
 
-  // Execute action
-  const executeAction = async (action: Action) => {
-    if (!confirm(`Execute action: ${action.type}${action.target ? ` on ${action.target}` : ''}?`)) {
-      return
-    }
+  // Handle icon click - toggle suggestions
+  const handleIconClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent triggering document click
 
-    setExecuting(action.type)
+    // Prevent drag from triggering click
+    if (!isDragging) {
+      if (showSuggestions) {
+        // Hide if already showing
+        hideSuggestions()
+      } else if (hasSuggestion) {
+        // Show if we have suggestions
+        setShowSuggestions(true)
 
-    try {
-      // Send action to content script for execution
-      const result = await chrome.runtime.sendMessage({
-        type: "EXECUTE_ACTION_REQUEST",
-        action: action
-      })
+        // Clear any existing timer
+        if (autoHideTimer) {
+          clearTimeout(autoHideTimer)
+        }
 
-      // Log to server
-      await chrome.runtime.sendMessage({
-        type: "EXECUTE_ACTION",
-        action: action,
-        success: result?.success || false
-      })
+        // Set 5-second auto-hide timer
+        const timer = setTimeout(() => {
+          setShowSuggestions(false)
+          setAutoHideTimer(null)
+        }, 5000)
 
-      if (result?.success) {
-        alert(`Action "${action.type}" executed successfully!`)
-      } else {
-        alert(`Action "${action.type}" failed: ${result?.error || 'Unknown error'}`)
+        setAutoHideTimer(timer)
       }
-    } catch (error) {
-      console.error("Failed to execute action:", error)
-      alert(`Action failed: ${error.message}`)
-
-      // Log failure to server
-      await chrome.runtime.sendMessage({
-        type: "EXECUTE_ACTION",
-        action: action,
-        success: false
-      })
-    } finally {
-      setExecuting(null)
     }
   }
 
-  const hasSuggestions = serverData.suggestions.length > 0 || serverData.actions.length > 0
+  // Hide suggestions when clicking anywhere on screen
+  useEffect(() => {
+    if (showSuggestions) {
+      const handleClickOutside = (e: MouseEvent) => {
+        hideSuggestions()
+      }
+
+      // Small delay to prevent immediate close from icon click
+      const timer = setTimeout(() => {
+        document.addEventListener("click", handleClickOutside)
+      }, 100)
+
+      return () => {
+        clearTimeout(timer)
+        document.removeEventListener("click", handleClickOutside)
+      }
+    }
+  }, [showSuggestions])
 
   return (
     <>
-      {/* Floating Chatbot Icon */}
+      {/* Floating Bot Icon */}
       <div
         style={{
           position: "fixed",
           left: `${position.x}px`,
           top: `${position.y}px`,
-          width: "60px",
-          height: "60px",
-          backgroundColor: hasSuggestions ? "#10b981" : "#4f46e5",
-          borderRadius: "50%",
+          width: "52px",
+          height: "52px",
+          background: hasSuggestion
+            ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+            : "linear-gradient(135deg, #2c3e50 0%, #3498db 100%)",
+          borderRadius: "16px",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           cursor: isDragging ? "grabbing" : "grab",
-          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+          boxShadow: hasSuggestion
+            ? "0 8px 24px rgba(102, 126, 234, 0.4)"
+            : "0 8px 24px rgba(52, 152, 219, 0.3)",
           zIndex: 999999,
-          transition: isDragging ? "none" : "all 0.3s",
+          transition: isDragging ? "none" : "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
           userSelect: "none"
         }}
         onMouseDown={handleMouseDown}
-        onClick={toggleSuggestions}
+        onClick={handleIconClick}
         onMouseEnter={(e) => {
           if (!isDragging) {
-            e.currentTarget.style.transform = "scale(1.1)"
+            e.currentTarget.style.transform = "scale(1.08)"
+            e.currentTarget.style.boxShadow = hasSuggestion
+              ? "0 12px 32px rgba(102, 126, 234, 0.5)"
+              : "0 12px 32px rgba(52, 152, 219, 0.4)"
           }
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.transform = "scale(1)"
+          e.currentTarget.style.boxShadow = hasSuggestion
+            ? "0 8px 24px rgba(102, 126, 234, 0.4)"
+            : "0 8px 24px rgba(52, 152, 219, 0.3)"
         }}>
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M12 2C6.48 2 2 6.48 2 12C2 13.54 2.36 14.99 3 16.26V21C3 21.55 3.45 22 4 22H8.74C10.01 22.64 11.46 23 13 23C18.52 23 23 18.52 23 13C23 6.48 18.52 2 12 2ZM9 11.5C8.17 11.5 7.5 10.83 7.5 10C7.5 9.17 8.17 8.5 9 8.5C9.83 8.5 10.5 9.17 10.5 10C10.5 10.83 9.83 11.5 9 11.5ZM15 11.5C14.17 11.5 13.5 10.83 13.5 10C13.5 9.17 14.17 8.5 15 8.5C15.83 8.5 16.5 9.17 16.5 10C16.5 10.83 15.83 11.5 15 11.5Z"
-            fill="white"
-          />
-        </svg>
-        {hasSuggestions && (
+        <RobotIcon size={28} />
+        {hasSuggestion && (
           <div
             style={{
               position: "absolute",
-              top: "-5px",
-              right: "-5px",
-              width: "20px",
-              height: "20px",
-              backgroundColor: "#ef4444",
+              top: "-4px",
+              right: "-4px",
+              width: "12px",
+              height: "12px",
+              backgroundColor: "#10b981",
               borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "12px",
-              fontWeight: "bold",
-              color: "white",
-              border: "2px solid white"
-            }}>
-            {serverData.suggestions.length + serverData.actions.length}
-          </div>
+              border: "2px solid white",
+              animation: "pulse 2s infinite"
+            }}
+          />
         )}
       </div>
 
-      {/* Suggestions Panel */}
-      {showSuggestions && (
+      {/* Suggestion Tooltip */}
+      {showSuggestions && hasSuggestion && (
         <div
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
-            left: position.x > window.innerWidth / 2 ? `${position.x - 320}px` : `${position.x + 70}px`,
-            top: `${position.y}px`,
-            width: "300px",
-            maxHeight: "400px",
+            left: position.x > window.innerWidth / 2 ? "auto" : `${position.x + 60}px`,
+            right: position.x > window.innerWidth / 2 ? `${window.innerWidth - position.x + 8}px` : "auto",
+            top: `${position.y + 8}px`,
+            maxWidth: "200px",
             backgroundColor: "white",
-            borderRadius: "12px",
-            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
+            borderRadius: "10px",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
             zIndex: 999998,
-            border: "1px solid #e5e7eb",
+            padding: "10px 12px",
             fontFamily: "system-ui, -apple-system, sans-serif",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column"
+            fontSize: "12px",
+            lineHeight: "1.4",
+            color: "#374151"
           }}>
           {/* Arrow pointer */}
           <div
             style={{
               position: "absolute",
-              top: "20px",
-              [position.x > window.innerWidth / 2 ? "right" : "left"]: "-8px",
+              top: "12px",
+              [position.x > window.innerWidth / 2 ? "right" : "left"]: "-6px",
               width: 0,
               height: 0,
-              borderTop: "8px solid transparent",
-              borderBottom: "8px solid transparent",
+              borderTop: "6px solid transparent",
+              borderBottom: "6px solid transparent",
               [position.x > window.innerWidth / 2 ? "borderLeft" : "borderRight"]:
-                "8px solid white"
+                "6px solid white"
             }}
           />
-
-          {/* Header */}
-          <div
-            style={{
-              padding: "12px 16px",
-              borderBottom: "1px solid #e5e7eb",
-              backgroundColor: "#f9fafb",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}>
-            <div style={{ fontWeight: "600", fontSize: "14px", color: "#111827" }}>
-              AI Suggestions
-            </div>
-            <button
-              onClick={() => setShowSuggestions(false)}
-              style={{
-                background: "none",
-                border: "none",
-                fontSize: "18px",
-                cursor: "pointer",
-                color: "#6b7280",
-                padding: 0
-              }}>
-              ×
-            </button>
-          </div>
-
-          {/* Content */}
-          <div style={{ overflowY: "auto", maxHeight: "340px" }}>
-            {serverData.error && (
-              <div
-                style={{
-                  padding: "12px 16px",
-                  backgroundColor: "#fef2f2",
-                  color: "#991b1b",
-                  fontSize: "12px",
-                  border: "1px solid #fecaca",
-                  margin: "8px"
-                }}>
-                ⚠️ {serverData.error}
-              </div>
-            )}
-
-            {!hasSuggestions && !serverData.error && (
-              <div
-                style={{
-                  padding: "32px 16px",
-                  textAlign: "center",
-                  color: "#6b7280",
-                  fontSize: "13px"
-                }}>
-                <div style={{ fontSize: "32px", marginBottom: "8px" }}>🤖</div>
-                <div>I'm learning your behavior...</div>
-                <div style={{ fontSize: "11px", marginTop: "4px" }}>
-                  Suggestions will appear after {30 - (serverData.lastUpdate ? 0 : 30)} more actions
-                </div>
-              </div>
-            )}
-
-            {/* Suggestions */}
-            {serverData.suggestions.length > 0 && (
-              <div style={{ padding: "8px" }}>
-                <div
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    marginBottom: "8px",
-                    paddingLeft: "8px"
-                  }}>
-                  SUGGESTIONS
-                </div>
-                {serverData.suggestions.map((suggestion, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      padding: "10px 12px",
-                      marginBottom: "6px",
-                      backgroundColor: "#f9fafb",
-                      borderRadius: "8px",
-                      fontSize: "13px",
-                      lineHeight: "1.5",
-                      color: "#374151",
-                      display: "flex",
-                      gap: "8px"
-                    }}>
-                    <span>💡</span>
-                    <span>{suggestion}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Actions */}
-            {serverData.actions.length > 0 && (
-              <div style={{ padding: "8px", borderTop: serverData.suggestions.length > 0 ? "1px solid #e5e7eb" : "none" }}>
-                <div
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    marginBottom: "8px",
-                    paddingLeft: "8px"
-                  }}>
-                  QUICK ACTIONS
-                </div>
-                {serverData.actions.map((action, index) => (
-                  <button
-                    key={index}
-                    onClick={() => executeAction(action)}
-                    disabled={executing === action.type}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      marginBottom: "6px",
-                      backgroundColor: executing === action.type ? "#e5e7eb" : "#4f46e5",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontSize: "13px",
-                      fontWeight: "600",
-                      cursor: executing === action.type ? "not-allowed" : "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      transition: "all 0.2s"
-                    }}
-                    onMouseEnter={(e) => {
-                      if (executing !== action.type) {
-                        e.currentTarget.style.backgroundColor = "#4338ca"
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (executing !== action.type) {
-                        e.currentTarget.style.backgroundColor = "#4f46e5"
-                      }
-                    }}>
-                    <span>{executing === action.type ? "Executing..." : `${getActionIcon(action.type)} ${action.type}`}</span>
-                    <span style={{ fontSize: "11px", opacity: 0.8 }}>
-                      {Math.round(action.confidence * 100)}%
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Last Update */}
-            {serverData.lastUpdate && (
-              <div
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "10px",
-                  color: "#9ca3af",
-                  textAlign: "center",
-                  borderTop: "1px solid #e5e7eb"
-                }}>
-                Updated {getTimeAgo(serverData.lastUpdate)}
-              </div>
-            )}
-          </div>
+          {serverData.suggestions[0]}
         </div>
       )}
     </>
   )
-}
-
-// Helper functions
-function getActionIcon(type: string): string {
-  const icons: { [key: string]: string } = {
-    navigate: "🔗",
-    click: "👆",
-    fill_form: "📝",
-    scroll: "📜",
-    bookmark: "⭐",
-    default: "⚡"
-  }
-  return icons[type] || icons.default
-}
-
-function getTimeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000)
-
-  if (seconds < 60) return "just now"
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-  return `${Math.floor(seconds / 86400)}d ago`
 }
 
 export default FloatingChatbot

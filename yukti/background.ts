@@ -61,8 +61,7 @@ chrome.runtime.onInstalled.addListener(() => {
       scrollBehavior: {}
     },
     batchCounter: 0, // Counter for batch sending
-    serverSuggestions: [], // Store suggestions from server
-    serverActions: [] // Store actions from server
+    serverSuggestions: [] // Store suggestions from server
   })
   console.log("Yukti: Extension installed, tracking everything automatically")
 })
@@ -87,9 +86,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   } else if (message.type === "GET_SERVER_SUGGESTIONS") {
     getServerSuggestions().then(sendResponse)
-    return true
-  } else if (message.type === "EXECUTE_ACTION") {
-    logActionExecution(message.action, message.success).then(sendResponse)
     return true
   }
 })
@@ -224,15 +220,31 @@ async function sendToServer(currentInteraction: UserInteraction) {
     // Take last 50 interactions for analysis
     const recentInteractions = interactions.slice(-50)
 
+    // Extract current page content
+    let pageContent = ""
+    try {
+      if (currentInteraction.tabId) {
+        const response = await chrome.tabs.sendMessage(currentInteraction.tabId, {
+          type: "GET_PAGE_CONTENT"
+        })
+        pageContent = response?.content || ""
+      }
+    } catch (error) {
+      console.warn("Could not extract page content:", error)
+    }
+
     // Prepare request payload
     const payload = {
       interactions: recentInteractions,
       current_url: currentInteraction.url,
       tab_id: currentInteraction.tabId,
+      page_content: pageContent,
       timestamp: Date.now()
     }
 
     console.log(`📤 Yukti: Sending ${recentInteractions.length} interactions to server...`)
+    console.log(`📋 Yukti: Page content: ${pageContent.length} characters`)
+    console.log(`📋 Yukti: Payload:`, { ...payload, page_content: `${pageContent.substring(0, 100)}...` })
 
     // Call server API
     const response = await fetch(`${SERVER_URL}/api/analyze`, {
@@ -244,20 +256,20 @@ async function sendToServer(currentInteraction: UserInteraction) {
     })
 
     if (!response.ok) {
-      throw new Error(`Server responded with ${response.status}`)
+      const errorData = await response.json().catch(() => null)
+      console.error(`❌ Server error ${response.status}:`, errorData)
+      throw new Error(`Server responded with ${response.status}: ${JSON.stringify(errorData)}`)
     }
 
     const data = await response.json()
 
     console.log(`✅ Yukti: Received response from server`)
     console.log(`   Suggestions: ${data.suggestions?.length || 0}`)
-    console.log(`   Actions: ${data.actions?.length || 0}`)
     console.log(`   Confidence: ${data.confidence?.toFixed(2) || 0}`)
 
-    // Store suggestions and actions for chatbot to retrieve
+    // Store suggestions for chatbot to retrieve
     await chrome.storage.local.set({
       serverSuggestions: data.suggestions || [],
-      serverActions: data.actions || [],
       lastServerUpdate: Date.now()
     })
 
@@ -269,8 +281,7 @@ async function sendToServer(currentInteraction: UserInteraction) {
     // Store error for chatbot to display
     await chrome.storage.local.set({
       serverError: error.message,
-      serverSuggestions: [],
-      serverActions: []
+      serverSuggestions: []
     })
   }
 }
@@ -295,14 +306,12 @@ async function getServerSuggestions() {
   try {
     const result = await chrome.storage.local.get([
       "serverSuggestions",
-      "serverActions",
       "lastServerUpdate",
       "serverError"
     ])
 
     return {
       suggestions: result.serverSuggestions || [],
-      actions: result.serverActions || [],
       lastUpdate: result.lastServerUpdate || null,
       error: result.serverError || null
     }
@@ -310,36 +319,9 @@ async function getServerSuggestions() {
     console.error("Failed to get server suggestions:", error)
     return {
       suggestions: [],
-      actions: [],
       lastUpdate: null,
       error: error.message
     }
-  }
-}
-
-// Log action execution to server
-async function logActionExecution(action: any, success: boolean) {
-  try {
-    const payload = {
-      action_type: action.type,
-      success: success,
-      details: action
-    }
-
-    await fetch(`${SERVER_URL}/api/action`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    })
-
-    console.log(`📝 Yukti: Logged action execution: ${action.type}`)
-
-    return { success: true }
-  } catch (error) {
-    console.error("Failed to log action:", error)
-    return { success: false, error: error.message }
   }
 }
 

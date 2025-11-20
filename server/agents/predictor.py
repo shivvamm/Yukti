@@ -1,4 +1,4 @@
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from config.settings import settings
 from graph.state import AgentState
@@ -9,13 +9,13 @@ from typing import Dict, Any
 class PredictorAgent:
     """
     Predictor Agent - Predicts next likely user actions
-    Uses Groq Llama 3.1 8B for fast predictions
+    Uses Google Gemini 2.5 Flash for fast predictions
     """
 
     def __init__(self):
-        self.llm = ChatGroq(
-            groq_api_key=settings.groq_api_key,
-            model_name=settings.predictor_model,
+        self.llm = ChatGoogleGenerativeAI(
+            google_api_key=settings.google_api_key,
+            model=settings.predictor_model,
             temperature=settings.temperature,
             max_tokens=settings.max_tokens
         )

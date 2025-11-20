@@ -1,4 +1,4 @@
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from config.settings import settings
 from graph.state import AgentState
@@ -9,13 +9,13 @@ from typing import Dict, Any
 class ActionAgent:
     """
     Action Agent - Determines specific actions to suggest/perform
-    Uses Groq Llama 3.1 70B for critical decision-making
+    Uses Google Gemini 2.5 Flash for fast, reliable action decisions
     """
 
     def __init__(self):
-        self.llm = ChatGroq(
-            groq_api_key=settings.groq_api_key,
-            model_name=settings.action_model,
+        self.llm = ChatGoogleGenerativeAI(
+            google_api_key=settings.google_api_key,
+            model=settings.action_model,
             temperature=0.5,  # Lower temperature for more deterministic actions
             max_tokens=settings.max_tokens
         )

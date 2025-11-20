@@ -28,6 +28,7 @@ class AnalyzeRequest(BaseModel):
     """Request to analyze user behavior"""
     interactions: List[UserInteraction] = Field(..., description="List of user interactions")
     current_url: str = Field(..., description="Current page URL")
+    page_content: Optional[str] = Field(None, description="Visible text content of current page")
     tab_id: Optional[int] = Field(None, description="Current tab ID")
     timestamp: int = Field(default_factory=lambda: int(datetime.now().timestamp() * 1000))
 
@@ -44,6 +45,7 @@ class AnalyzeRequest(BaseModel):
                     }
                 ],
                 "current_url": "https://example.com",
+                "page_content": "Welcome to our site. Find the best deals on hotels...",
                 "tab_id": 123,
                 "timestamp": 1699901234567
             }

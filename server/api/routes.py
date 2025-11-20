@@ -60,6 +60,7 @@ async def analyze_behavior(request: AnalyzeRequest):
         result = await run_analysis_workflow(
             interactions=interactions_list,
             current_url=request.current_url,
+            page_content=request.page_content or "",
             tab_id=request.tab_id
         )
 
@@ -78,7 +79,7 @@ async def analyze_behavior(request: AnalyzeRequest):
         # Log response
         response_time = (time.time() - start_time) * 1000
         RequestLogger.log_response("/api/analyze", 200, response_time)
-
+        print("#######",response)
         return response
 
     except Exception as e:

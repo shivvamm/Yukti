@@ -135,9 +135,9 @@ def calculate_interaction_summary(interactions: list) -> Dict[str, Any]:
     }
 
 
-def validate_groq_api_key(api_key: str) -> bool:
+def validate_google_api_key(api_key: str) -> bool:
     """
-    Validate Groq API key format
+    Validate Google API key format
 
     Args:
         api_key: API key to validate
@@ -148,12 +148,13 @@ def validate_groq_api_key(api_key: str) -> bool:
     if not api_key:
         return False
 
-    # Groq API keys start with "gsk_"
-    if not api_key.startswith("gsk_"):
-        return False
+    # Google API keys typically start with "AIza"
+    if not api_key.startswith("AIza"):
+        log_warning(f"Google API key should start with 'AIza', got: {api_key[:10]}...")
+        # Still return True as format may vary
 
-    # Should be at least 20 characters
-    if len(api_key) < 20:
+    # Should be at least 30 characters
+    if len(api_key) < 30:
         return False
 
     return True

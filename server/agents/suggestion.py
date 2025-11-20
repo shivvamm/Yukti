@@ -1,4 +1,4 @@
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from config.settings import settings
 from graph.state import AgentState
@@ -8,35 +8,41 @@ from typing import Dict, Any
 
 class SuggestionAgent:
     """
-    Suggestion Agent - Generates helpful suggestions for users
-    Uses Groq Llama 3.1 70B for better quality suggestions
+    Suggestion Agent - Provides actionable help based on deep user intent understanding
+    Uses Google Gemini 2.5 Pro for insightful, helpful suggestions
     """
 
     def __init__(self):
-        self.llm = ChatGroq(
-            groq_api_key=settings.groq_api_key,
-            model_name=settings.suggestion_model,
-            temperature=0.8,  # Higher temperature for more creative suggestions
-            max_tokens=settings.max_tokens
+        self.llm = ChatGoogleGenerativeAI(
+            google_api_key=settings.google_api_key,
+            model=settings.suggestion_model,
+            temperature=0.7,  # Balanced for helpful yet accurate suggestions
+            max_tokens=2048
         )
 
     def suggest(self, state: AgentState) -> AgentState:
         """
-        Generate helpful suggestions based on analysis and predictions
+        Generate ONE powerful suggestion based on intent analysis
 
         Args:
-            state: Current agent state
+            state: Current agent state with intent analysis
 
         Returns:
-            Updated state with suggestions
+            Updated state with actionable suggestion
         """
         try:
-            analysis = state.get("analysis", {})
-            predictions = state.get("predictions", {})
+            intent_analysis = state.get("intent_analysis", {})
+            session_context = state.get("session_context", {})
             current_url = state["current_url"]
+            page_content = state.get("page_content", "")
 
             # Create suggestion prompt
-            prompt = self._create_suggestion_prompt(analysis, predictions, current_url)
+            prompt = self._create_suggestion_prompt(
+                intent_analysis,
+                session_context,
+                current_url,
+                page_content
+            )
 
             # Call LLM
             response = self.llm.invoke([
@@ -47,17 +53,32 @@ class SuggestionAgent:
             # Parse response
             result = self._parse_response(response.content)
 
-            # Update state
-            state["suggestions"] = result.get("suggestions", [])
+            # Extract single suggestion
+            suggestion_text = result.get("suggestion", "")
+
+            # Update state - return as list with single item for compatibility
+            state["suggestions"] = [suggestion_text] if suggestion_text else []
+            state["suggestion_reasoning"] = result.get("reasoning", "")
             state["suggestion_priority"] = result.get("priority", "medium")
             state["suggestion_complete"] = True
 
-            print(f"✅ Suggestion: Generated {len(state['suggestions'])} suggestions")
+            if suggestion_text:
+                print(f"✅ Suggestion: {suggestion_text[:80]}...")
+                print(f"   Priority: {result.get('priority', 'medium')}")
+            else:
+                print("⚠️  Suggestion: No suggestion generated")
 
         except Exception as e:
+            import traceback
             print(f"❌ Suggestion Error: {str(e)}")
+            print(f"   Traceback: {traceback.format_exc()}")
+
+            # Safely append error
+            if "errors" not in state or state["errors"] is None:
+                state["errors"] = []
             state["errors"].append(f"Suggestion: {str(e)}")
-            state["suggestions"] = ["Keep browsing! I'm learning your patterns."]
+
+            state["suggestions"] = []
             state["suggestion_priority"] = "low"
             state["suggestion_complete"] = True
 
@@ -65,37 +86,103 @@ class SuggestionAgent:
 
     def _get_system_message(self) -> str:
         """Get system message for suggestion agent"""
-        return """You are a helpful AI assistant that provides personalized browsing suggestions.
+        return """You are a UX expert and helpful assistant that provides ONE powerful, actionable suggestion.
 
-Your task is to:
-1. Generate 2-4 helpful, actionable suggestions based on user behavior
-2. Make suggestions friendly and conversational
-3. Prioritize suggestions (low, medium, high)
-4. Focus on productivity, time-saving, and user convenience
+Your role:
+1. Understand the user's REAL goal from intent analysis
+2. Identify if they're stuck, confused, or doing something inefficiently
+3. Provide ONE suggestion that:
+   - Directly helps them achieve their goal
+   - Shows them a better/faster way if needed
+   - Unblocks them if they're stuck
+   - Is specific and actionable (not generic)
+
+Priority levels:
+- high: User is stuck or suggestion saves significant time
+- medium: Helpful optimization or relevant tip
+- low: Nice-to-have insight
 
 Return ONLY valid JSON in this exact format:
 {
-    "suggestions": [
-        "You frequently visit this site. Consider bookmarking it for quick access.",
-        "Based on your reading pattern, you might find the related articles section useful."
-    ],
-    "priority": "medium"
+    "suggestion": "Try using the price comparison view to see all hotels side-by-side instead of switching tabs",
+    "reasoning": "User is comparing prices across multiple tabs which is inefficient",
+    "priority": "medium",
+    "helps_with": "comparing_options"
 }
 
-Keep suggestions concise (under 100 characters each). Do not include explanations, just the JSON."""
+Rules:
+- Max 150 characters for suggestion
+- Be conversational but concise
+- Focus on user's actual goal
+- If user is browsing normally with no clear need, return empty suggestion
+- Never suggest things user is already doing correctly
 
-    def _create_suggestion_prompt(self, analysis: dict, predictions: dict, current_url: str) -> str:
-        """Create suggestion prompt"""
-        return f"""Generate personalized suggestions for the user:
+Do not include explanations outside JSON."""
 
-Current URL: {current_url}
-User Intent: {analysis.get('user_intent', 'browsing')}
-Navigation Pattern: {analysis.get('navigation_pattern', 'casual')}
-Time Pattern: {analysis.get('time_pattern', 'unknown')}
-Predicted Next Actions: {predictions.get('next_likely_actions', [])}
-Confidence: {predictions.get('confidence', 0.0)}
+    def _create_suggestion_prompt(
+        self,
+        intent_analysis: dict,
+        session_context: dict,
+        current_url: str,
+        page_content: str
+    ) -> str:
+        """Create suggestion prompt based on intent analysis"""
 
-Generate helpful, friendly suggestions in JSON format."""
+        # Extract intent analysis
+        primary_intent = intent_analysis.get("primary_intent", "Unknown")
+        user_stage = intent_analysis.get("user_stage", "exploring")
+        pain_points = intent_analysis.get("pain_points", [])
+        is_stuck = intent_analysis.get("is_user_stuck", False)
+        stuck_reason = intent_analysis.get("stuck_reason", "")
+        what_would_help = intent_analysis.get("what_would_help", "")
+        emotional_state = intent_analysis.get("emotional_state", "neutral")
+
+        # Extract session context
+        current_goal = session_context.get("current_goal", "Unknown")
+
+        pain_points_str = "\n".join(f"- {p}" for p in pain_points) if pain_points else "None"
+
+        # Truncate page content
+        page_preview = page_content[:400] + "..." if len(page_content) > 400 else page_content
+
+        return f"""Provide ONE powerful suggestion to help this user:
+
+CURRENT PAGE:
+{current_url}
+
+WHAT'S ON THIS PAGE:
+{page_preview if page_preview else "No content available"}
+(Use this to give context-specific suggestions based on what they're looking at)
+
+USER'S GOAL:
+{primary_intent}
+
+CURRENT STAGE:
+{user_stage}
+
+EMOTIONAL STATE:
+{emotional_state}
+
+IS USER STUCK?
+{is_stuck}
+{f"Reason: {stuck_reason}" if stuck_reason else ""}
+
+PAIN POINTS:
+{pain_points_str}
+
+WHAT WOULD HELP (from intent analysis):
+{what_would_help}
+
+YOUR TASK:
+Based on this deep understanding of the user, provide ONE actionable suggestion that:
+1. Directly addresses their goal: "{current_goal}"
+2. Helps with their current pain points
+3. Unblocks them if stuck
+4. Shows a better way if they're being inefficient
+
+If user is browsing normally with no clear need for help, return empty suggestion ("").
+
+Return suggestion in JSON format."""
 
     def _parse_response(self, content: str) -> Dict[str, Any]:
         """Parse LLM response"""
@@ -112,8 +199,10 @@ Generate helpful, friendly suggestions in JSON format."""
         except (json.JSONDecodeError, ValueError) as e:
             print(f"⚠️  Failed to parse suggestion response: {e}")
             return {
-                "suggestions": ["I'm learning your browsing patterns to provide better suggestions."],
-                "priority": "low"
+                "suggestion": "",
+                "reasoning": "Failed to generate suggestion",
+                "priority": "low",
+                "helps_with": ""
             }
 
 

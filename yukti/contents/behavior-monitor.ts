@@ -128,7 +128,7 @@ function handleClick(event: MouseEvent) {
     url: window.location.href,
     elementType: target.tagName,
     elementId: target.id || undefined,
-    elementClass: target.className || undefined,
+    elementClass: target.className ? String(target.className) : undefined,
     elementText: target.textContent?.slice(0, 50) || undefined, // Limit text length
     elementHTML: elementHTML
   }
@@ -196,7 +196,7 @@ function handleInputValue(event: Event) {
     url: window.location.href,
     elementType: target.tagName,
     elementId: target.id || undefined,
-    elementClass: target.className || undefined,
+    elementClass: target.className ? String(target.className) : undefined,
     inputName: target.name || undefined,
     inputValue: target.value || ""
   }
@@ -276,11 +276,52 @@ async function initializeTracking() {
   console.log("Yukti: Behavior monitoring initialized")
 }
 
-// Listen for tracking status changes
+// Extract readable text content from the page
+function extractPageContent(): string {
+  try {
+    // Get main content elements
+    const mainContent = document.querySelector('main') ||
+                       document.querySelector('article') ||
+                       document.querySelector('[role="main"]') ||
+                       document.body
+
+    // Extract text, removing scripts, styles, and hidden elements
+    const clone = mainContent.cloneNode(true) as HTMLElement
+
+    // Remove unwanted elements
+    const unwantedSelectors = ['script', 'style', 'noscript', 'iframe', 'nav', 'header', 'footer', '[aria-hidden="true"]']
+    unwantedSelectors.forEach(selector => {
+      clone.querySelectorAll(selector).forEach(el => el.remove())
+    })
+
+    // Get text content
+    let text = clone.innerText || clone.textContent || ""
+
+    // Clean up text
+    text = text
+      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+      .replace(/\n\s*\n/g, '\n') // Remove empty lines
+      .trim()
+
+    // Limit to first 3000 characters to avoid token limits
+    return text.substring(0, 3000)
+  } catch (error) {
+    console.error("Failed to extract page content:", error)
+    return ""
+  }
+}
+
+// Listen for messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "TRACKING_STATUS_CHANGED") {
     checkTrackingStatus()
+    sendResponse({ success: true })
+  } else if (message.type === "GET_PAGE_CONTENT") {
+    // Extract visible text content from the page
+    const pageContent = extractPageContent()
+    sendResponse({ content: pageContent })
   }
+  return true // Keep channel open for async response
 })
 
 // Initialize when DOM is ready

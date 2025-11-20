@@ -3,17 +3,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from api.routes import router
 from config.settings import settings
-from utils.helpers import log_info, log_error, validate_groq_api_key
+from utils.helpers import log_info, log_error, validate_google_api_key
 import uvicorn
 
 
 # Validate configuration on startup
 def validate_configuration():
     """Validate server configuration"""
-    if not validate_groq_api_key(settings.groq_api_key):
+    if not validate_google_api_key(settings.google_api_key):
         raise ValueError(
-            "Invalid or missing GROQ_API_KEY. Please set it in your .env file.\n"
-            "Get your API key from: https://console.groq.com"
+            "Invalid or missing GOOGLE_API_KEY. Please set it in your .env file.\n"
+            "Get your API key from: https://ai.google.dev/gemini-api/docs/api-key"
         )
 
     log_info("✅ Configuration validated successfully")
@@ -22,7 +22,7 @@ def validate_configuration():
 # Create FastAPI app
 app = FastAPI(
     title="Yukti Multi-Agent Server",
-    description="AI-powered browser behavior analysis with LangGraph multi-agent system powered by Groq",
+    description="AI-powered browser behavior analysis with LangGraph multi-agent system powered by Google Gemini",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -32,7 +32,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development (restrict in production)
+    allow_origins=settings.get_allowed_origins_list(),  # From settings
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,7 +56,7 @@ async def startup_event():
         log_info("=" * 60)
         log_info(f"📡 Server: http://{settings.host}:{settings.port}")
         log_info(f"📚 API Docs: http://{settings.host}:{settings.port}/docs")
-        log_info(f"🤖 Using Groq Models:")
+        log_info(f"🤖 Using Google Gemini Models (1M token context):")
         log_info(f"   - Analyzer: {settings.analyzer_model}")
         log_info(f"   - Predictor: {settings.predictor_model}")
         log_info(f"   - Suggestion: {settings.suggestion_model}")

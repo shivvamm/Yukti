@@ -1,6 +1,6 @@
 import os
 from typing import List
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,41 +9,46 @@ load_dotenv()
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
 
-    # Groq API Configuration
-    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    # Google Gemini API Configuration
+    google_api_key: str = ""
 
-    # Model Configuration
-    analyzer_model: str = os.getenv("ANALYZER_MODEL", "llama-3.1-8b-instant")
-    predictor_model: str = os.getenv("PREDICTOR_MODEL", "llama-3.1-8b-instant")
-    suggestion_model: str = os.getenv("SUGGESTION_MODEL", "llama-3.1-70b-versatile")
-    action_model: str = os.getenv("ACTION_MODEL", "llama-3.1-70b-versatile")
-    supervisor_model: str = os.getenv("SUPERVISOR_MODEL", "llama-3.1-70b-versatile")
+    # Model Configuration (Gemini 2.5 models)
+    analyzer_model: str = "gemini-2.5-flash"
+    predictor_model: str = "gemini-2.5-flash"
+    suggestion_model: str = "gemini-2.5-pro"
+    action_model: str = "gemini-2.5-flash"
+    supervisor_model: str = "gemini-2.5-pro"
 
     # Model Parameters
-    temperature: float = float(os.getenv("TEMPERATURE", "0.7"))
-    max_tokens: int = int(os.getenv("MAX_TOKENS", "1024"))
+    temperature: float = 0.7
+    max_tokens: int = 8192
 
     # Server Configuration
-    host: str = os.getenv("HOST", "0.0.0.0")
-    port: int = int(os.getenv("PORT", "8000"))
-    debug: bool = os.getenv("DEBUG", "True").lower() == "true"
+    host: str = "0.0.0.0"
+    port: int = 8000
+    debug: bool = True
 
-    # CORS Settings
-    allowed_origins: List[str] = os.getenv(
-        "ALLOWED_ORIGINS",
-        "chrome-extension://*,http://localhost:3000,http://localhost:8000"
-    ).split(",")
+    # CORS Settings (comma-separated string)
+    allowed_origins: str = "*"
 
     # Batch Processing
-    batch_size: int = int(os.getenv("BATCH_SIZE", "50"))
-    analysis_threshold: int = int(os.getenv("ANALYSIS_THRESHOLD", "20"))
+    batch_size: int = 50
+    analysis_threshold: int = 20
 
     # Logging
-    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    log_level: str = "INFO"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+    def get_allowed_origins_list(self) -> List[str]:
+        """Parse allowed_origins string into list"""
+        if self.allowed_origins == "*":
+            return ["*"]
+        return [origin.strip() for origin in self.allowed_origins.split(",")]
 
 
 # Global settings instance
@@ -53,9 +58,10 @@ settings = Settings()
 # Validate settings on import
 def validate_settings():
     """Validate critical settings"""
-    if not settings.groq_api_key:
+    if not settings.google_api_key:
         raise ValueError(
-            "GROQ_API_KEY is not set. Please set it in your .env file or environment variables."
+            "GOOGLE_API_KEY is not set. Please set it in your .env file or environment variables.\n"
+            "Get your API key from: https://ai.google.dev/gemini-api/docs/api-key"
         )
 
     print(f"✅ Settings loaded successfully")
