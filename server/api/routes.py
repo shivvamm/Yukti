@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Header
+from typing import Optional
 from models.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -8,8 +9,10 @@ from models.schemas import (
 )
 from graph.workflow import run_analysis_workflow
 from utils.helpers import RequestLogger, calculate_interaction_summary, log_info
+from config.settings import settings
 from datetime import datetime
 import time
+import os
 
 # Create API router
 router = APIRouter()
@@ -31,12 +34,16 @@ async def health_check():
 
 
 @router.post("/api/analyze", response_model=AnalyzeResponse)
-async def analyze_behavior(request: AnalyzeRequest):
+async def analyze_behavior(
+    request: AnalyzeRequest,
+    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-API-Key")
+):
     """
     Analyze user behavior and provide suggestions
 
     Args:
         request: Analysis request with user interactions
+        x_gemini_api_key: Optional Gemini API key from extension
 
     Returns:
         Analysis response with suggestions and actions
@@ -44,6 +51,12 @@ async def analyze_behavior(request: AnalyzeRequest):
     start_time = time.time()
 
     try:
+        # Use client-provided API key if available, otherwise use server config
+        if x_gemini_api_key:
+            os.environ["GOOGLE_API_KEY"] = x_gemini_api_key
+            settings.google_api_key = x_gemini_api_key
+            log_info("🔑 Using client-provided Gemini API key")
+
         RequestLogger.log_request("/api/analyze", "POST", {
             "interactions": len(request.interactions),
             "url": request.current_url
@@ -64,22 +77,22 @@ async def analyze_behavior(request: AnalyzeRequest):
             tab_id=request.tab_id
         )
 
-        # Build response
+        # Build response (new 3-agent workflow format)
         response = AnalyzeResponse(
             success=result.get("success", True),
             suggestions=result.get("suggestions", []),
-            actions=result.get("actions", []),
-            analysis=result.get("analysis"),
-            predictions=result.get("predictions"),
             confidence=result.get("confidence", 0.0),
+            intent=result.get("intent"),
+            user_stage=result.get("user_stage"),
             reasoning=result.get("reasoning"),
+            priority=result.get("priority"),
             timestamp=int(datetime.now().timestamp() * 1000)
         )
 
         # Log response
         response_time = (time.time() - start_time) * 1000
         RequestLogger.log_response("/api/analyze", 200, response_time)
-        print("#######",response)
+
         return response
 
     except Exception as e:

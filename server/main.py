@@ -57,11 +57,9 @@ async def startup_event():
         log_info(f"📡 Server: http://{settings.host}:{settings.port}")
         log_info(f"📚 API Docs: http://{settings.host}:{settings.port}/docs")
         log_info(f"🤖 Using Google Gemini Models (1M token context):")
-        log_info(f"   - Analyzer: {settings.analyzer_model}")
-        log_info(f"   - Predictor: {settings.predictor_model}")
+        log_info(f"   - Context Builder: {settings.context_builder_model}")
+        log_info(f"   - Intent Analyzer: {settings.analyzer_model}")
         log_info(f"   - Suggestion: {settings.suggestion_model}")
-        log_info(f"   - Action: {settings.action_model}")
-        log_info(f"   - Supervisor: {settings.supervisor_model}")
         log_info(f"🔧 Debug Mode: {settings.debug}")
         log_info("=" * 60 + "\n")
 

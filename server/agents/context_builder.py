@@ -16,7 +16,7 @@ class ContextBuilderAgent:
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(
             google_api_key=settings.google_api_key,
-            model="gemini-2.5-flash",
+            model=settings.context_builder_model,
             temperature=0.3,  # Low temperature for accurate context extraction
             max_tokens=4096
         )

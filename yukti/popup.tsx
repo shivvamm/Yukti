@@ -50,6 +50,11 @@ function IndexPopup() {
   const [disableFormInteractions, setDisableFormInteractions] = useState(false)
   const [disableInputValues, setDisableInputValues] = useState(false)
 
+  // API Key settings
+  const [geminiApiKey, setGeminiApiKey] = useState("")
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [apiKeySaved, setApiKeySaved] = useState(false)
+
   // Add CSS for toggle switches and scrollbar
   const toggleCSS = `
     .toggle-switch input {
@@ -155,7 +160,8 @@ function IndexPopup() {
       "disableScrolling",
       "disableNavigation",
       "disableFormInteractions",
-      "disableInputValues"
+      "disableInputValues",
+      "geminiApiKey"
     ])
 
     setDisableClicks(result.disableClicks || false)
@@ -163,6 +169,17 @@ function IndexPopup() {
     setDisableNavigation(result.disableNavigation || false)
     setDisableFormInteractions(result.disableFormInteractions || false)
     setDisableInputValues(result.disableInputValues || false)
+    setGeminiApiKey(result.geminiApiKey || "")
+  }
+
+  async function saveApiKey() {
+    try {
+      await chrome.storage.local.set({ geminiApiKey })
+      setApiKeySaved(true)
+      setTimeout(() => setApiKeySaved(false), 2000)
+    } catch (error) {
+      console.error("Failed to save API key:", error)
+    }
   }
 
   async function loadSuggestions() {
@@ -394,6 +411,46 @@ function IndexPopup() {
                     <span className="toggle-slider"></span>
                   </label>
                 </div>
+
+            <h3 style={{...styles.subtitle, marginTop: 24}}>API Configuration</h3>
+
+            <div style={styles.apiKeySection}>
+              <div style={styles.settingLabel}>Gemini API Key</div>
+              <div style={styles.settingDesc}>
+                Enter your Google Gemini API key for AI suggestions
+              </div>
+              <div style={styles.apiKeyInputWrapper}>
+                <input
+                  type={showApiKey ? "text" : "password"}
+                  value={geminiApiKey}
+                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  placeholder="AIza..."
+                  style={styles.apiKeyInput}
+                />
+                <button
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  style={styles.apiKeyToggle}
+                >
+                  {showApiKey ? "🙈" : "👁️"}
+                </button>
+              </div>
+              <button
+                onClick={saveApiKey}
+                style={styles.saveApiKeyButton}
+              >
+                {apiKeySaved ? "✓ SAVED" : "SAVE KEY"}
+              </button>
+              <div style={styles.apiKeyHint}>
+                Get your key from{" "}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  style={styles.apiKeyLink}
+                >
+                  Google AI Studio
+                </a>
+              </div>
+            </div>
           </div>
         )}
 
@@ -939,6 +996,61 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: 12,
     padding: 20,
     fontStyle: "italic"
+  },
+  apiKeySection: {
+    backgroundColor: "#1e293b",
+    padding: 16,
+    border: "2px solid #334155",
+    marginTop: 8
+  },
+  apiKeyInputWrapper: {
+    display: "flex",
+    gap: 8,
+    marginTop: 12
+  },
+  apiKeyInput: {
+    flex: 1,
+    padding: "10px 12px",
+    backgroundColor: "#0f172a",
+    border: "2px solid #334155",
+    borderRadius: 0,
+    color: "#e2e8f0",
+    fontSize: 13,
+    fontFamily: "'Courier New', monospace",
+    outline: "none"
+  },
+  apiKeyToggle: {
+    padding: "10px 12px",
+    backgroundColor: "#334155",
+    border: "2px solid #1e293b",
+    borderRadius: 0,
+    color: "#e2e8f0",
+    cursor: "pointer",
+    fontSize: 14
+  },
+  saveApiKeyButton: {
+    width: "100%",
+    marginTop: 12,
+    padding: "12px",
+    backgroundColor: "#06b6d4",
+    color: "#0f172a",
+    border: "3px solid #0891b2",
+    borderRadius: 0,
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: "bold",
+    letterSpacing: "1px",
+    textTransform: "uppercase",
+    boxShadow: "0 3px 0 #0891b2"
+  },
+  apiKeyHint: {
+    marginTop: 12,
+    fontSize: 11,
+    color: "#64748b"
+  },
+  apiKeyLink: {
+    color: "#06b6d4",
+    textDecoration: "none"
   }
 }
 

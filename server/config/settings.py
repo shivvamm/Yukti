@@ -12,12 +12,10 @@ class Settings(BaseSettings):
     # Google Gemini API Configuration
     google_api_key: str = ""
 
-    # Model Configuration (Gemini 2.5 models)
-    analyzer_model: str = "gemini-2.5-flash"
-    predictor_model: str = "gemini-2.5-flash"
-    suggestion_model: str = "gemini-2.5-pro"
-    action_model: str = "gemini-2.5-flash"
-    supervisor_model: str = "gemini-2.5-pro"
+    # Model Configuration (Gemini 2.5 models) - New 3-Agent Architecture
+    context_builder_model: str = "gemini-2.5-flash"  # Fast context extraction
+    analyzer_model: str = "gemini-2.5-pro"  # Deep intent analysis
+    suggestion_model: str = "gemini-2.5-pro"  # Actionable suggestions
 
     # Model Parameters
     temperature: float = 0.7
@@ -65,8 +63,9 @@ def validate_settings():
         )
 
     print(f"✅ Settings loaded successfully")
-    print(f"   - Analyzer Model: {settings.analyzer_model}")
-    print(f"   - Supervisor Model: {settings.supervisor_model}")
+    print(f"   - Context Builder: {settings.context_builder_model}")
+    print(f"   - Intent Analyzer: {settings.analyzer_model}")
+    print(f"   - Suggestion: {settings.suggestion_model}")
     print(f"   - Server: {settings.host}:{settings.port}")
     print(f"   - Debug Mode: {settings.debug}")
 

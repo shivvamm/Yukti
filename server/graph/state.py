@@ -1,12 +1,4 @@
 from typing import TypedDict, List, Dict, Any, Optional
-from models.schemas import (
-    UserInteraction,
-    AnalysisResult,
-    PredictionResult,
-    SuggestionResult,
-    ActionResult,
-    SupervisorDecision
-)
 
 
 class AgentState(TypedDict):

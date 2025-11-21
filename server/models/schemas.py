@@ -69,43 +69,15 @@ class AnalysisResult(BaseModel):
     user_intent: str = Field(default="browsing")
 
 
-class PredictionResult(BaseModel):
-    """Result from predictor agent"""
-    next_likely_actions: List[str] = Field(default_factory=list)
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    predicted_pages: List[str] = Field(default_factory=list)
-
-
-class SuggestionResult(BaseModel):
-    """Result from suggestion agent"""
-    suggestions: List[str] = Field(default_factory=list)
-    priority: str = Field(default="medium")
-
-
-class ActionResult(BaseModel):
-    """Result from action agent"""
-    type: str = Field(..., description="Action type: click, navigate, fill_form, etc.")
-    target: Optional[str] = Field(None, description="Target selector or URL")
-    value: Optional[str] = Field(None, description="Value for fill_form actions")
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-
-
-class SupervisorDecision(BaseModel):
-    """Final decision from supervisor agent"""
-    should_act: bool = Field(..., description="Whether to suggest actions")
-    reasoning: str = Field(..., description="Explanation of decision")
-    priority: str = Field(default="medium")
-
-
 class AnalyzeResponse(BaseModel):
-    """Response from analyze endpoint"""
+    """Response from analyze endpoint (simplified for new 3-agent workflow)"""
     success: bool = Field(..., description="Whether analysis was successful")
     suggestions: List[str] = Field(default_factory=list, description="AI-generated suggestions")
-    actions: List[ActionResult] = Field(default_factory=list, description="Suggested actions")
-    analysis: Optional[AnalysisResult] = Field(None, description="Detailed analysis")
-    predictions: Optional[PredictionResult] = Field(None, description="Behavior predictions")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Overall confidence score")
-    reasoning: Optional[str] = Field(None, description="AI reasoning")
+    intent: Optional[str] = Field(None, description="Detected user intent")
+    user_stage: Optional[str] = Field(None, description="User journey stage")
+    reasoning: Optional[str] = Field(None, description="AI reasoning for suggestion")
+    priority: Optional[str] = Field(None, description="Suggestion priority level")
     timestamp: int = Field(default_factory=lambda: int(datetime.now().timestamp() * 1000))
 
     class Config:
@@ -113,17 +85,13 @@ class AnalyzeResponse(BaseModel):
             "example": {
                 "success": True,
                 "suggestions": [
-                    "You frequently visit this site in the evening. Consider bookmarking it.",
-                    "Based on your scrolling pattern, you might be interested in the content below."
-                ],
-                "actions": [
-                    {
-                        "type": "navigate",
-                        "target": "https://example.com/related-page",
-                        "confidence": 0.85
-                    }
+                    "Try using the price comparison view to see all hotels side-by-side"
                 ],
                 "confidence": 0.85,
+                "intent": "Find affordable hotels in Paris",
+                "user_stage": "comparing",
+                "reasoning": "User is comparing prices across multiple tabs",
+                "priority": "medium",
                 "timestamp": 1699901234567
             }
         }

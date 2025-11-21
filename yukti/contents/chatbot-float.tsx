@@ -214,13 +214,13 @@ const FloatingChatbot = () => {
           <div
             style={{
               position: "absolute",
-              top: "-4px",
-              right: "-4px",
-              width: "12px",
-              height: "12px",
+              top: "2px",
+              right: "2px",
+              width: "8px",
+              height: "8px",
               backgroundColor: "#10b981",
               borderRadius: "50%",
-              border: "2px solid white",
+              boxShadow: "0 0 4px #10b981",
               animation: "pulse 2s infinite"
             }}
           />

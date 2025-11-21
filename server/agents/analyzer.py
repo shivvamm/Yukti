@@ -15,7 +15,7 @@ class AnalyzerAgent:
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(
             google_api_key=settings.google_api_key,
-            model="gemini-2.5-pro",  # Use Pro for better reasoning
+            model=settings.analyzer_model,  # Use Pro for better reasoning
             temperature=0.4,
             max_tokens=4096
         )
