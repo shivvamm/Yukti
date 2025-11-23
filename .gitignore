@@ -6,10 +6,13 @@
 # Dependencies
 node_modules/
 yukti/node_modules/
+website/node_modules/
 
 # Build outputs
 yukti/build/
 yukti/.plasmo/
+website/.next/
+website/out/
 dist/
 
 # Python
