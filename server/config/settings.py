@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
@@ -9,8 +9,14 @@ load_dotenv()
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
 
-    # Google Gemini API Configuration
-    google_api_key: str = ""
+    # LLM Provider Configuration
+    llm_provider: Literal["gemini", "openai", "groq", "mistral"] = "gemini"
+
+    # Provider API keys — set the one matching llm_provider
+    google_api_key:  str = ""
+    openai_api_key:  str = ""
+    groq_api_key:    str = ""
+    mistral_api_key: str = ""
 
     # Model Configuration (Gemini 2.5 models) - New 3-Agent Architecture
     context_builder_model: str = "gemini-2.5-flash"  # Fast context extraction
