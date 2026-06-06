@@ -59,16 +59,36 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
-# Validate settings on import
 def validate_settings():
-    """Validate critical settings"""
-    if not settings.google_api_key:
+    """Validate critical settings. Raises on misconfiguration."""
+    # Import here to avoid a circular import at module load.
+    from llm.providers import PROVIDERS
+
+    if settings.llm_provider not in PROVIDERS:
         raise ValueError(
-            "GOOGLE_API_KEY is not set. Please set it in your .env file or environment variables.\n"
-            "Get your API key from: https://ai.google.dev/gemini-api/docs/api-key"
+            f"LLM_PROVIDER='{settings.llm_provider}' is not supported. "
+            f"Valid values: {sorted(PROVIDERS.keys())}"
         )
 
+    spec = PROVIDERS[settings.llm_provider]
+    active_key = getattr(settings, spec.key_attr)
+    if not active_key:
+        raise ValueError(
+            f"{spec.env_var} is not set but LLM_PROVIDER={settings.llm_provider}. "
+            f"Set {spec.env_var} in your .env file or environment."
+        )
+
+    # Verify the active provider's pip package is importable.
+    try:
+        __import__(spec.pkg.replace("-", "_"))
+    except ImportError as e:
+        raise ImportError(
+            f"LLM_PROVIDER={settings.llm_provider} requires `{spec.pkg}`. "
+            f"Install with: pip install {spec.pkg}"
+        ) from e
+
     print(f"✅ Settings loaded successfully")
+    print(f"   - Provider: {settings.llm_provider}")
     print(f"   - Context Builder: {settings.context_builder_model}")
     print(f"   - Intent Analyzer: {settings.analyzer_model}")
     print(f"   - Suggestion: {settings.suggestion_model}")
@@ -77,7 +97,4 @@ def validate_settings():
 
 
 # Run validation when module is imported
-try:
-    validate_settings()
-except ValueError as e:
-    print(f"⚠️  Warning: {e}")
+validate_settings()
