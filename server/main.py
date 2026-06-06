@@ -3,26 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from api.routes import router
 from config.settings import settings
-from utils.helpers import log_info, log_error, validate_google_api_key
+from utils.helpers import log_info, log_error
 import uvicorn
-
-
-# Validate configuration on startup
-def validate_configuration():
-    """Validate server configuration"""
-    if not validate_google_api_key(settings.google_api_key):
-        raise ValueError(
-            "Invalid or missing GOOGLE_API_KEY. Please set it in your .env file.\n"
-            "Get your API key from: https://ai.google.dev/gemini-api/docs/api-key"
-        )
-
-    log_info("✅ Configuration validated successfully")
 
 
 # Create FastAPI app
 app = FastAPI(
     title="Yukti Multi-Agent Server",
-    description="AI-powered browser behavior analysis with LangGraph multi-agent system powered by Google Gemini",
+    description="AI-powered browser behavior analysis with LangGraph multi-agent system",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -48,24 +36,19 @@ app.include_router(router)
 @app.on_event("startup")
 async def startup_event():
     """Run on server startup"""
-    try:
-        validate_configuration()
-
-        log_info("\n" + "=" * 60)
-        log_info("🚀 Yukti Multi-Agent Server Starting...")
-        log_info("=" * 60)
-        log_info(f"📡 Server: http://{settings.host}:{settings.port}")
-        log_info(f"📚 API Docs: http://{settings.host}:{settings.port}/docs")
-        log_info(f"🤖 Using Google Gemini Models (1M token context):")
-        log_info(f"   - Context Builder: {settings.context_builder_model}")
-        log_info(f"   - Intent Analyzer: {settings.analyzer_model}")
-        log_info(f"   - Suggestion: {settings.suggestion_model}")
-        log_info(f"🔧 Debug Mode: {settings.debug}")
-        log_info("=" * 60 + "\n")
-
-    except Exception as e:
-        log_error(f"❌ Startup Error: {str(e)}")
-        raise
+    # Config validation already ran at config.settings import time; getting
+    # here means it succeeded. Just log the startup banner.
+    log_info("\n" + "=" * 60)
+    log_info("🚀 Yukti Multi-Agent Server Starting...")
+    log_info("=" * 60)
+    log_info(f"📡 Server: http://{settings.host}:{settings.port}")
+    log_info(f"📚 API Docs: http://{settings.host}:{settings.port}/docs")
+    log_info(f"🤖 LLM Provider: {settings.llm_provider}")
+    log_info(f"   - Context Builder: {settings.context_builder_model}")
+    log_info(f"   - Intent Analyzer: {settings.analyzer_model}")
+    log_info(f"   - Suggestion: {settings.suggestion_model}")
+    log_info(f"🔧 Debug Mode: {settings.debug}")
+    log_info("=" * 60 + "\n")
 
 
 # Shutdown event
