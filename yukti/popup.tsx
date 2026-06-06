@@ -50,11 +50,6 @@ function IndexPopup() {
   const [disableFormInteractions, setDisableFormInteractions] = useState(false)
   const [disableInputValues, setDisableInputValues] = useState(false)
 
-  // API Key settings
-  const [geminiApiKey, setGeminiApiKey] = useState("")
-  const [showApiKey, setShowApiKey] = useState(false)
-  const [apiKeySaved, setApiKeySaved] = useState(false)
-
   // Add CSS for toggle switches and scrollbar
   const toggleCSS = `
     .toggle-switch input {
@@ -161,7 +156,6 @@ function IndexPopup() {
       "disableNavigation",
       "disableFormInteractions",
       "disableInputValues",
-      "geminiApiKey"
     ])
 
     setDisableClicks(result.disableClicks || false)
@@ -169,17 +163,6 @@ function IndexPopup() {
     setDisableNavigation(result.disableNavigation || false)
     setDisableFormInteractions(result.disableFormInteractions || false)
     setDisableInputValues(result.disableInputValues || false)
-    setGeminiApiKey(result.geminiApiKey || "")
-  }
-
-  async function saveApiKey() {
-    try {
-      await chrome.storage.local.set({ geminiApiKey })
-      setApiKeySaved(true)
-      setTimeout(() => setApiKeySaved(false), 2000)
-    } catch (error) {
-      console.error("Failed to save API key:", error)
-    }
   }
 
   async function loadSuggestions() {
@@ -412,45 +395,6 @@ function IndexPopup() {
                   </label>
                 </div>
 
-            <h3 style={{...styles.subtitle, marginTop: 24}}>API Configuration</h3>
-
-            <div style={styles.apiKeySection}>
-              <div style={styles.settingLabel}>Gemini API Key</div>
-              <div style={styles.settingDesc}>
-                Enter your Google Gemini API key for AI suggestions
-              </div>
-              <div style={styles.apiKeyInputWrapper}>
-                <input
-                  type={showApiKey ? "text" : "password"}
-                  value={geminiApiKey}
-                  onChange={(e) => setGeminiApiKey(e.target.value)}
-                  placeholder="AIza..."
-                  style={styles.apiKeyInput}
-                />
-                <button
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  style={styles.apiKeyToggle}
-                >
-                  {showApiKey ? "🙈" : "👁️"}
-                </button>
-              </div>
-              <button
-                onClick={saveApiKey}
-                style={styles.saveApiKeyButton}
-              >
-                {apiKeySaved ? "✓ SAVED" : "SAVE KEY"}
-              </button>
-              <div style={styles.apiKeyHint}>
-                Get your key from{" "}
-                <a
-                  href="https://aistudio.google.com/apikey"
-                  target="_blank"
-                  style={styles.apiKeyLink}
-                >
-                  Google AI Studio
-                </a>
-              </div>
-            </div>
           </div>
         )}
 
