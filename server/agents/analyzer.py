@@ -1,7 +1,6 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from config.settings import settings
 from graph.state import AgentState
+from llm.factory import get_llm
 import json
 from typing import Dict, Any
 
@@ -9,16 +8,11 @@ from typing import Dict, Any
 class AnalyzerAgent:
     """
     Intent Analyzer Agent - Deep analysis of user intent and behavior
-    Uses Google Gemini 2.5 Pro for advanced reasoning about user goals
+    Uses the configured LLM provider for advanced reasoning about user goals.
     """
 
     def __init__(self):
-        self.llm = ChatGoogleGenerativeAI(
-            google_api_key=settings.google_api_key,
-            model=settings.analyzer_model,  # Use Pro for better reasoning
-            temperature=0.4,
-            max_tokens=4096
-        )
+        self.llm = get_llm("analyzer")
 
     def analyze(self, state: AgentState) -> AgentState:
         """

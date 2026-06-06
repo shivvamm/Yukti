@@ -1,7 +1,6 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from config.settings import settings
 from graph.state import AgentState
+from llm.factory import get_llm
 import json
 from typing import Dict, Any, List
 from collections import Counter
@@ -10,16 +9,11 @@ from collections import Counter
 class ContextBuilderAgent:
     """
     Context Builder Agent - Builds rich session context from ALL user interactions
-    Uses Gemini's 1M token context to analyze entire browsing session
+    Uses the configured LLM provider (see settings.llm_provider) for context extraction.
     """
 
     def __init__(self):
-        self.llm = ChatGoogleGenerativeAI(
-            google_api_key=settings.google_api_key,
-            model=settings.context_builder_model,
-            temperature=0.3,  # Low temperature for accurate context extraction
-            max_tokens=4096
-        )
+        self.llm = get_llm("context_builder")
 
     def build_context(self, state: AgentState) -> AgentState:
         """

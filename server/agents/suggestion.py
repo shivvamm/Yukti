@@ -1,7 +1,6 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from config.settings import settings
 from graph.state import AgentState
+from llm.factory import get_llm
 import json
 from typing import Dict, Any
 
@@ -9,16 +8,11 @@ from typing import Dict, Any
 class SuggestionAgent:
     """
     Suggestion Agent - Provides actionable help based on deep user intent understanding
-    Uses Google Gemini 2.5 Pro for insightful, helpful suggestions
+    Uses the configured LLM provider for insightful, helpful suggestions.
     """
 
     def __init__(self):
-        self.llm = ChatGoogleGenerativeAI(
-            google_api_key=settings.google_api_key,
-            model=settings.suggestion_model,
-            temperature=0.7,  # Balanced for helpful yet accurate suggestions
-            max_tokens=2048
-        )
+        self.llm = get_llm("suggestion")
 
     def suggest(self, state: AgentState) -> AgentState:
         """
