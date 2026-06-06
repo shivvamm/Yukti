@@ -14,8 +14,11 @@ def test_each_spec_has_required_fields():
         assert spec.pkg, f"{name} missing pkg"
 
 
-def test_lc_names_match_langchain_provider_strings():
-    assert PROVIDERS["gemini"].lc_name == "google_genai"
-    assert PROVIDERS["openai"].lc_name == "openai"
-    assert PROVIDERS["groq"].lc_name == "groq"
-    assert PROVIDERS["mistral"].lc_name == "mistralai"
+def test_all_spec_values_match_expected():
+    expected = {
+        "gemini":  ProviderSpec(lc_name="google_genai", key_attr="google_api_key",  env_var="GOOGLE_API_KEY",  pkg="langchain-google-genai"),
+        "openai":  ProviderSpec(lc_name="openai",       key_attr="openai_api_key",  env_var="OPENAI_API_KEY",  pkg="langchain-openai"),
+        "groq":    ProviderSpec(lc_name="groq",         key_attr="groq_api_key",    env_var="GROQ_API_KEY",    pkg="langchain-groq"),
+        "mistral": ProviderSpec(lc_name="mistralai",    key_attr="mistral_api_key", env_var="MISTRAL_API_KEY", pkg="langchain-mistralai"),
+    }
+    assert PROVIDERS == expected
