@@ -214,9 +214,8 @@ async function checkAndSendBatch(totalInteractions: number, latestInteraction: U
 // Send interactions to server for AI analysis
 async function sendToServer(currentInteraction: UserInteraction) {
   try {
-    const result = await chrome.storage.local.get(["interactions", "geminiApiKey"])
+    const result = await chrome.storage.local.get(["interactions"])
     const interactions: UserInteraction[] = result.interactions || []
-    const geminiApiKey = result.geminiApiKey || ""
 
     // Take last 50 interactions for analysis
     const recentInteractions = interactions.slice(-50)
@@ -248,18 +247,9 @@ async function sendToServer(currentInteraction: UserInteraction) {
     console.log(`📋 Yukti: Payload:`, { ...payload, page_content: `${pageContent.substring(0, 100)}...` })
 
     // Call server API
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json"
-    }
-
-    // Add API key header if available
-    if (geminiApiKey) {
-      headers["X-Gemini-API-Key"] = geminiApiKey
-    }
-
     const response = await fetch(`${SERVER_URL}/api/analyze`, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     })
 
