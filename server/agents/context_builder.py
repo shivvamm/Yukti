@@ -75,11 +75,11 @@ class ContextBuilderAgent:
                 if len(input_val) > 2:  # Ignore very short inputs
                     form_inputs.append({
                         "value": input_val,
-                        "name": interaction.get("inputName", "unknown"),
-                        "url": interaction.get("url", "")
+                        "name": interaction.get("inputName") or "unknown",
+                        "url": interaction.get("url") or ""
                     })
                     # Detect search queries
-                    if "search" in interaction.get("inputName", "").lower():
+                    if "search" in (interaction.get("inputName") or "").lower():
                         search_queries.append(input_val)
 
         # Extract navigation history
@@ -90,8 +90,8 @@ class ContextBuilderAgent:
 
         for interaction in interactions:
             if interaction.get("type") == "navigation":
-                url = interaction.get("url", "")
-                timestamp = interaction.get("timestamp", 0)
+                url = interaction.get("url") or ""
+                timestamp = interaction.get("timestamp") or 0
 
                 # Calculate time spent on previous page
                 if last_url and last_nav_time:
@@ -103,7 +103,7 @@ class ContextBuilderAgent:
                 pages_visited.append({
                     "url": url,
                     "timestamp": timestamp,
-                    "title": interaction.get("tabTitle", "")
+                    "title": interaction.get("tabTitle") or ""
                 })
                 last_nav_time = timestamp
                 last_url = url
@@ -113,10 +113,10 @@ class ContextBuilderAgent:
         for interaction in interactions:
             if interaction.get("type") == "click":
                 clicked_elements.append({
-                    "element_type": interaction.get("elementType", ""),
-                    "element_text": interaction.get("elementText", "")[:100],
-                    "element_id": interaction.get("elementId", ""),
-                    "url": interaction.get("url", "")
+                    "element_type": interaction.get("elementType") or "",
+                    "element_text": (interaction.get("elementText") or "")[:100],
+                    "element_id": interaction.get("elementId") or "",
+                    "url": interaction.get("url") or ""
                 })
 
         # Count action types

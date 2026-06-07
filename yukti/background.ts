@@ -41,6 +41,13 @@ interface InteractionsByTab {
 const MAX_INTERACTIONS_STORED = 10000 // Limit storage size
 const BATCH_SIZE = 30 // Send to server every N interactions
 const SERVER_URL = "http://localhost:8000" // Server endpoint
+const MIN_SEND_INTERVAL_MS = 15_000 // Don't fire /api/analyze more often than this
+
+// In-memory single-flight guards for /api/analyze. Single-threaded JS means
+// the synchronous reads-and-claims below are race-free even if many
+// recordInteraction callers are awaiting storage I/O concurrently.
+let isSendingBatch = false
+let lastSendAt = 0
 
 // Initialize default settings
 chrome.runtime.onInstalled.addListener(() => {
@@ -195,19 +202,33 @@ async function recordInteraction(interaction: UserInteraction) {
 async function checkAndSendBatch(totalInteractions: number, latestInteraction: UserInteraction) {
   try {
     const result = await chrome.storage.local.get(["batchCounter"])
-    let batchCounter = result.batchCounter || 0
-    batchCounter++
-
+    const batchCounter = (result.batchCounter || 0) + 1
     await chrome.storage.local.set({ batchCounter })
 
-    // Send to server every BATCH_SIZE interactions
-    if (batchCounter >= BATCH_SIZE) {
+    if (batchCounter < BATCH_SIZE) return
+
+    // SYNC GUARDS — read-and-claim run between awaits, race-free in single-threaded JS.
+    if (isSendingBatch) {
+      console.log("⏸️ Yukti: Skipping send — another batch already in flight")
+      return
+    }
+    if (Date.now() - lastSendAt < MIN_SEND_INTERVAL_MS) {
+      console.log(`⏸️ Yukti: Skipping send — cooldown (${Math.round((MIN_SEND_INTERVAL_MS - (Date.now() - lastSendAt)) / 1000)}s remaining)`)
+      return
+    }
+    isSendingBatch = true
+
+    try {
       console.log(`🚀 Yukti: Sending batch to server (${batchCounter} interactions)`)
       await sendToServer(latestInteraction)
-      await chrome.storage.local.set({ batchCounter: 0 }) // Reset counter
+      await chrome.storage.local.set({ batchCounter: 0 })
+      lastSendAt = Date.now()
+    } finally {
+      isSendingBatch = false
     }
   } catch (error) {
     console.error("Failed to check batch:", error)
+    isSendingBatch = false
   }
 }
 
