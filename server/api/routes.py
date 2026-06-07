@@ -1,143 +1,119 @@
-from fastapi import APIRouter, HTTPException, status
-from models.schemas import (
-    AnalyzeRequest,
-    AnalyzeResponse,
-    HealthResponse,
-    ErrorResponse,
-    ActionRequest
-)
-from graph.workflow import run_analysis_workflow
-from utils.helpers import RequestLogger, calculate_interaction_summary, log_info
+"""HTTP routes for Yukti.
+
+  GET  /health      → liveness
+  POST /api/index   → upsert interactions into Pinecone
+  POST /api/chat    → answer a question using RAG over Pinecone + live page DOM
+"""
+
 from datetime import datetime
 import time
 
-# Create API router
+from fastapi import APIRouter
+
+from models.schemas import (
+    HealthResponse,
+    IndexRequest, IndexResponse,
+    ChatRequest, ChatResponse, ChatSource,
+)
+from rag import chat as chat_module
+from rag import pinecone_client
+from rag.formatter import format as format_interaction
+from utils.helpers import RequestLogger, log_info
+
 router = APIRouter()
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health_check():
-    """
-    Health check endpoint
-
-    Returns:
-        Health status
-    """
+async def health_check() -> HealthResponse:
     return HealthResponse(
         status="healthy",
         timestamp=datetime.now().isoformat(),
-        version="1.0.0"
+        version="2.0.0",
     )
 
 
-@router.post("/api/analyze", response_model=AnalyzeResponse)
-async def analyze_behavior(request: AnalyzeRequest):
-    """
-    Analyze user behavior and provide suggestions
-
-    Args:
-        request: Analysis request with user interactions
-
-    Returns:
-        Analysis response with suggestions and actions
-    """
-    start_time = time.time()
-
+@router.post("/api/index", response_model=IndexResponse)
+async def index_interactions(request: IndexRequest) -> IndexResponse:
+    """Vectorize and upsert interactions into Pinecone."""
+    start = time.time()
     try:
-        RequestLogger.log_request("/api/analyze", "POST", {
-            "interactions": len(request.interactions),
-            "url": request.current_url
-        })
+        RequestLogger.log_request("/api/index", "POST",
+                                  {"interactions": len(request.interactions)})
 
-        # Log interaction summary
-        summary = calculate_interaction_summary([i.model_dump() for i in request.interactions])
-        log_info(f"   Summary: {summary['total']} interactions, {summary['unique_urls']} URLs, {summary['most_common_action']} most common")
+        records = []
+        skipped = 0
+        for raw in request.interactions:
+            record = format_interaction(raw)
+            if record is None:
+                skipped += 1
+                continue
+            records.append(record)
 
-        # Convert Pydantic models to dicts for workflow
-        interactions_list = [i.model_dump() for i in request.interactions]
+        result = pinecone_client.upsert_texts(records)
+        elapsed_ms = (time.time() - start) * 1000
+        RequestLogger.log_response("/api/index", 200, elapsed_ms)
+        log_info(f"   Indexed: {result['indexed']}, skipped: {skipped}")
 
-        # Run multi-agent workflow
-        result = await run_analysis_workflow(
-            interactions=interactions_list,
+        return IndexResponse(success=True, indexed=result["indexed"], skipped=skipped)
+
+    except Exception as e:
+        elapsed_ms = (time.time() - start) * 1000
+        RequestLogger.log_error("/api/index", e)
+        RequestLogger.log_response("/api/index", 502, elapsed_ms)
+        return IndexResponse(success=False, indexed=0, skipped=0, error=str(e))
+
+
+@router.post("/api/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest) -> ChatResponse:
+    """Answer a question grounded in current page DOM + RAG retrieval."""
+    start = time.time()
+    try:
+        RequestLogger.log_request("/api/chat", "POST",
+                                  {"question_len": len(request.question),
+                                   "page_text_len": len(request.current_page_text)})
+
+        # 1) Retrieve from Pinecone. Tolerate failures — still answer with page context.
+        try:
+            retrieved = pinecone_client.query(text=request.question, top_k=8)
+        except Exception as e:
+            log_info(f"   ⚠️  Pinecone query failed: {e}")
+            retrieved = []
+
+        # 2) Ask the LLM
+        result = chat_module.answer(
+            question=request.question,
             current_url=request.current_url,
-            page_content=request.page_content or "",
-            tab_id=request.tab_id
+            current_page_text=request.current_page_text,
+            chat_history=[t.model_dump() for t in request.chat_history],
+            retrieved=retrieved,
         )
 
-        # Build response (new 3-agent workflow format)
-        response = AnalyzeResponse(
-            success=result.get("success", True),
-            suggestions=result.get("suggestions", []),
-            confidence=result.get("confidence", 0.0),
-            intent=result.get("intent"),
-            user_stage=result.get("user_stage"),
-            reasoning=result.get("reasoning"),
-            priority=result.get("priority"),
-            timestamp=int(datetime.now().timestamp() * 1000)
-        )
+        elapsed_ms = (time.time() - start) * 1000
+        RequestLogger.log_response("/api/chat", 200, elapsed_ms)
 
-        # Log response
-        response_time = (time.time() - start_time) * 1000
-        RequestLogger.log_response("/api/analyze", 200, response_time)
-
-        return response
+        sources = [
+            ChatSource(url=s.url, timestamp=s.timestamp, snippet=s.snippet)
+            for s in result.sources
+        ]
+        return ChatResponse(success=True, answer=result.answer, sources=sources)
 
     except Exception as e:
-        response_time = (time.time() - start_time) * 1000
-        RequestLogger.log_error("/api/analyze", e)
-        RequestLogger.log_response("/api/analyze", 500, response_time)
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
-
-
-@router.post("/api/action")
-async def log_action(request: ActionRequest):
-    """
-    Log action execution from extension
-
-    Args:
-        request: Action execution details
-
-    Returns:
-        Success response
-    """
-    try:
-        RequestLogger.log_request("/api/action", "POST", {
-            "action_type": request.action_type,
-            "success": request.success
-        })
-
-        log_info(f"   Action logged: {request.action_type} ({'success' if request.success else 'failed'})")
-
-        return {
-            "success": True,
-            "message": "Action logged successfully",
-            "timestamp": int(datetime.now().timestamp() * 1000)
-        }
-
-    except Exception as e:
-        RequestLogger.log_error("/api/action", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        elapsed_ms = (time.time() - start) * 1000
+        RequestLogger.log_error("/api/chat", e)
+        RequestLogger.log_response("/api/chat", 502, elapsed_ms)
+        return ChatResponse(success=False, answer=None, sources=[], error=str(e))
 
 
 @router.get("/")
 async def root():
-    """Root endpoint with API info"""
     return {
-        "name": "Yukti Multi-Agent Server",
-        "version": "1.0.0",
-        "description": "AI-powered browser behavior analysis with LangGraph multi-agent system",
+        "name": "Yukti RAG Chat Server",
+        "version": "2.0.0",
         "endpoints": {
             "health": "/health",
-            "analyze": "/api/analyze",
-            "log_action": "/api/action",
-            "docs": "/docs"
+            "index": "/api/index",
+            "chat": "/api/chat",
+            "docs": "/docs",
         },
-        "status": "running"
+        "status": "running",
     }
