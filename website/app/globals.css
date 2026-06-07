@@ -8,54 +8,71 @@
   box-sizing: border-box;
 }
 
-body {
-  background-color: #0f172a;
-  color: #e2e8f0;
-  font-family: 'Courier New', Courier, monospace;
+html {
+  scroll-behavior: smooth;
 }
 
-/* Custom scrollbar */
+body {
+  background-color: #0b1322;
+  color: #a6b3c8;
+  font-family: var(--font-sans), -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.25);
+  color: #f2f6fc;
+}
+
+/* Editorial scrollbar */
 ::-webkit-scrollbar {
   width: 12px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #1e293b;
-  border-left: 3px solid #334155;
+  background: #0b1322;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #06b6d4;
-  border: 3px solid #0891b2;
+  background: #28344c;
+  border-radius: 99px;
+  border: 3px solid #0b1322;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #0891b2;
+  background: #1e2c48;
 }
 
-/* Animations */
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 8px #10b981;
-  }
-  50% {
-    box-shadow: 0 0 20px #10b981;
-  }
+/* Atmosphere — a faint cyan grid woven into the canvas */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(40, 52, 76, 0.35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(40, 52, 76, 0.35) 1px, transparent 1px);
+  background-size: 56px 56px;
 }
 
+.bg-glow {
+  background: radial-gradient(60% 50% at 50% 0%, rgba(34, 211, 238, 0.10), transparent 70%);
+}
+
+/* Entrance animations */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 @keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
+  50% { box-shadow: 0 0 0 5px rgba(52, 211, 153, 0); }
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 2s infinite;
-}
+.animate-rise { animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-float { animation: float 4s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulse-glow 2.4s infinite; }
 
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
+.delay-1 { animation-delay: 0.08s; }
+.delay-2 { animation-delay: 0.16s; }
+.delay-3 { animation-delay: 0.24s; }
+.delay-4 { animation-delay: 0.32s; }
+.delay-5 { animation-delay: 0.40s; }
