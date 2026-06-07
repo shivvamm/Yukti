@@ -13,8 +13,6 @@ from pinecone import Pinecone
 from config.settings import settings
 from rag.formatter import FormattedRecord
 
-NAMESPACE = "default"
-
 _pinecone: Pinecone | None = None
 _index = None
 
@@ -66,7 +64,10 @@ def upsert_texts(records: Iterable[FormattedRecord]) -> dict[str, int]:
         {"_id": r.id, "values_text": r.values_text, **r.metadata}
         for r in records_list
     ]
-    _index_handle().upsert_records(NAMESPACE, payload)
+    _index_handle().upsert_records(
+        namespace=settings.pinecone_namespace,
+        records=payload,
+    )
     return {"indexed": len(records_list)}
 
 
@@ -81,16 +82,21 @@ class QueryHit:
 def query(text: str, top_k: int = 8) -> list[QueryHit]:
     """Query Pinecone by text. Returns top_k QueryHits."""
     response = _index_handle().search(
-        NAMESPACE,
-        {"inputs": {"text": text}, "top_k": top_k},
+        namespace=settings.pinecone_namespace,
+        inputs={"text": text},
+        top_k=top_k,
         fields=["values_text", "url", "tab_title", "timestamp", "type",
                 "element_text", "element_type", "input_name", "input_value"],
     )
-    hits_raw = response.get("result", {}).get("hits", [])
+    # Pinecone v9 returns a typed response object; coerce to dict for uniform parsing
+    response_dict = response if isinstance(response, dict) else response.to_dict()
+    hits_raw = response_dict.get("result", {}).get("hits", [])
     return [
         QueryHit(
-            id=h["_id"],
-            score=h["_score"],
+            # Pinecone SDK has used both `_id`/`_score` (older) and `id_`/`score_`
+            # (v9+). Read whichever is present.
+            id=h.get("_id") or h.get("id_") or "",
+            score=float(h.get("_score") or h.get("score_") or 0.0),
             values_text=h["fields"].get("values_text", ""),
             metadata={k: v for k, v in h["fields"].items() if k != "values_text"},
         )

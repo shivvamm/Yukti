@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     pinecone_embed_model: str = "multilingual-e5-large"
     pinecone_cloud:       str = "aws"
     pinecone_region:      str = "us-east-1"
+    pinecone_namespace:   str = "yukti"  # logical partition inside the index
 
     # Model Parameters
     temperature: float = 0.7

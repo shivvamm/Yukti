@@ -29,10 +29,13 @@ class FakeIndex:
             }
         }
 
-    def upsert_records(self, namespace, records):
+    def upsert_records(self, *, namespace, records, timeout=None):
         self.upserts.append((namespace, list(records)))
 
-    def search(self, namespace, query, fields=None):
+    def search(self, *, namespace, inputs=None, top_k=None, fields=None, **_kwargs):
+        # Mirror the v9 SDK shape: capture a synthetic query payload that the
+        # production wrapper used to construct. The tests assert against this.
+        query = {"inputs": inputs, "top_k": top_k}
         self.queries.append((namespace, query, fields))
         return self.fake_query_result
 
@@ -91,7 +94,8 @@ def test_upsert_texts_passes_records_through(reset_module):
     result = pc.upsert_texts(records)
     assert result == {"indexed": 2}
     upserted_ns, upserted_records = reset_module._index.upserts[0]
-    assert upserted_ns == "default"
+    from config.settings import settings as _settings
+    assert upserted_ns == _settings.pinecone_namespace
     assert upserted_records[0]["_id"] == "a"
     assert upserted_records[0]["values_text"] == "text-a"
     assert upserted_records[0]["url"] == "u1"
