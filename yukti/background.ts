@@ -50,8 +50,8 @@ let isSendingBatch = false
 let lastSendAt = 0
 
 // Initialize default settings
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({
+chrome.runtime.onInstalled.addListener(async () => {
+  await chrome.storage.local.set({
     trackingEnabled: true, // Always on - tracking starts immediately
     // Opt-out settings: false = track, true = don't track
     disableClicks: false, // Track clicks by default
@@ -69,8 +69,23 @@ chrome.runtime.onInstalled.addListener(() => {
     },
     batchCounter: 0, // Counter for batch sending
   })
+  // Generate a stable user ID for this install — scopes Pinecone queries
+  // to only this user's vectors via a metadata filter on the server side.
+  await getOrCreateUserId()
   console.log("Yukti: Extension installed, tracking everything automatically")
 })
+
+// Stable per-install user ID. Generated lazily so existing installs (which
+// predate this code) get one on first use. Persists across browser restarts
+// via chrome.storage.local. Lost on uninstall.
+async function getOrCreateUserId(): Promise<string> {
+  const result = await chrome.storage.local.get(["userId"])
+  if (result.userId) return result.userId
+  const newId = crypto.randomUUID()
+  await chrome.storage.local.set({ userId: newId })
+  console.log(`Yukti: generated new user_id = ${newId}`)
+  return newId
+}
 
 // Handle messages from content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -236,7 +251,9 @@ async function sendToServer(currentInteraction: UserInteraction) {
     // Take last 50 interactions for indexing
     const recentInteractions = interactions.slice(-50)
 
+    const userId = await getOrCreateUserId()
     const payload = {
+      user_id: userId,
       interactions: recentInteractions,
       current_url: currentInteraction.url,
       tab_id: currentInteraction.tabId,
@@ -455,10 +472,11 @@ interface ChatReply {
 
 async function askChat(payload: AskChatPayload): Promise<ChatReply> {
   try {
+    const userId = await getOrCreateUserId()
     const response = await fetch(`${SERVER_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ user_id: userId, ...payload }),
     })
     if (!response.ok) {
       const text = await response.text().catch(() => "")

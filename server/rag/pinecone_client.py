@@ -54,14 +54,18 @@ def ensure_index() -> None:
     )
 
 
-def upsert_texts(records: Iterable[FormattedRecord]) -> dict[str, int]:
-    """Upsert FormattedRecords to Pinecone. Returns {indexed: N}."""
+def upsert_texts(records: Iterable[FormattedRecord], user_id: str) -> dict[str, int]:
+    """Upsert FormattedRecords to Pinecone, stamping each with user_id.
+
+    Records all live in the same namespace; per-user scoping is enforced
+    at query time via a metadata filter on `user_id`.
+    """
     records_list = list(records)
     if not records_list:
         return {"indexed": 0}
 
     payload = [
-        {"_id": r.id, "values_text": r.values_text, **r.metadata}
+        {"_id": r.id, "values_text": r.values_text, "user_id": user_id, **r.metadata}
         for r in records_list
     ]
     _index_handle().upsert_records(
@@ -79,13 +83,18 @@ class QueryHit:
     metadata: dict[str, Any]
 
 
-def query(text: str, top_k: int = 8) -> list[QueryHit]:
-    """Query Pinecone by text. Returns top_k QueryHits."""
+def query(text: str, user_id: str, top_k: int = 8) -> list[QueryHit]:
+    """Query Pinecone by text, scoped to the given user_id via metadata filter.
+
+    The user_id filter is mandatory — without it, the result set would
+    include other users' vectors that share the same namespace.
+    """
     response = _index_handle().search(
         namespace=settings.pinecone_namespace,
         inputs={"text": text},
         top_k=top_k,
-        fields=["values_text", "url", "tab_title", "timestamp", "type",
+        filter={"user_id": {"$eq": user_id}},
+        fields=["values_text", "user_id", "url", "tab_title", "timestamp", "type",
                 "element_text", "element_type", "input_name", "input_value"],
     )
     # Pinecone v9 returns a typed response object; coerce to dict for uniform parsing

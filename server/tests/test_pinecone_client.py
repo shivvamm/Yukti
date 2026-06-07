@@ -32,10 +32,10 @@ class FakeIndex:
     def upsert_records(self, *, namespace, records, timeout=None):
         self.upserts.append((namespace, list(records)))
 
-    def search(self, *, namespace, inputs=None, top_k=None, fields=None, **_kwargs):
+    def search(self, *, namespace, inputs=None, top_k=None, fields=None, filter=None, **_kwargs):
         # Mirror the v9 SDK shape: capture a synthetic query payload that the
         # production wrapper used to construct. The tests assert against this.
-        query = {"inputs": inputs, "top_k": top_k}
+        query = {"inputs": inputs, "top_k": top_k, "filter": filter}
         self.queries.append((namespace, query, fields))
         return self.fake_query_result
 
@@ -85,31 +85,34 @@ def test_ensure_index_skips_when_present(reset_module):
     assert len(reset_module.created_indexes) == 0
 
 
-def test_upsert_texts_passes_records_through(reset_module):
+def test_upsert_texts_stamps_user_id_into_each_record(reset_module):
     reset_module._existing_indexes.append("yukti-interactions")
     records = [
         FormattedRecord(id="a", values_text="text-a", metadata={"url": "u1"}),
         FormattedRecord(id="b", values_text="text-b", metadata={"url": "u2"}),
     ]
-    result = pc.upsert_texts(records)
+    result = pc.upsert_texts(records, user_id="user-xyz")
     assert result == {"indexed": 2}
     upserted_ns, upserted_records = reset_module._index.upserts[0]
     from config.settings import settings as _settings
     assert upserted_ns == _settings.pinecone_namespace
+    # Every record must carry user_id in its metadata for filtered queries
+    assert upserted_records[0]["user_id"] == "user-xyz"
+    assert upserted_records[1]["user_id"] == "user-xyz"
     assert upserted_records[0]["_id"] == "a"
     assert upserted_records[0]["values_text"] == "text-a"
     assert upserted_records[0]["url"] == "u1"
 
 
 def test_upsert_empty_records_is_noop(reset_module):
-    result = pc.upsert_texts([])
+    result = pc.upsert_texts([], user_id="anyone")
     assert result == {"indexed": 0}
     assert reset_module._index.upserts == []
 
 
-def test_query_returns_query_hits(reset_module):
+def test_query_filters_by_user_id(reset_module):
     reset_module._existing_indexes.append("yukti-interactions")
-    hits = pc.query("what was the news site?", top_k=5)
+    hits = pc.query("what was the news site?", user_id="user-xyz", top_k=5)
     assert len(hits) == 1
     assert hits[0].id == "id1"
     assert hits[0].score == 0.92
@@ -117,4 +120,6 @@ def test_query_returns_query_hits(reset_module):
     assert hits[0].metadata["url"] == "https://news.ycombinator.com/"
     _, query_payload, fields = reset_module._index.queries[0]
     assert query_payload["inputs"]["text"] == "what was the news site?"
+    # The user_id filter must be present — otherwise other users' vectors leak in
+    assert query_payload["filter"] == {"user_id": {"$eq": "user-xyz"}}
     assert query_payload["top_k"] == 5

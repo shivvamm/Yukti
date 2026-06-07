@@ -20,6 +20,7 @@ class HealthResponse(BaseModel):
 
 
 class IndexRequest(BaseModel):
+    user_id: str = Field(..., description="Per-install UUID. Scopes the Pinecone namespace.")
     interactions: list[dict[str, Any]] = Field(
         ..., description="Recent interactions to upsert into the RAG vector store."
     )
@@ -43,6 +44,7 @@ class ChatTurn(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    user_id: str = Field(..., description="Per-install UUID. Scopes the Pinecone namespace.")
     question: str
     current_url: str = ""
     current_page_text: str = ""

@@ -38,7 +38,8 @@ async def index_interactions(request: IndexRequest) -> IndexResponse:
     start = time.time()
     try:
         RequestLogger.log_request("/api/index", "POST",
-                                  {"interactions": len(request.interactions)})
+                                  {"interactions": len(request.interactions),
+                                   "user_id": request.user_id[:8]})
 
         records = []
         skipped = 0
@@ -49,7 +50,7 @@ async def index_interactions(request: IndexRequest) -> IndexResponse:
                 continue
             records.append(record)
 
-        result = pinecone_client.upsert_texts(records)
+        result = pinecone_client.upsert_texts(records, user_id=request.user_id)
         elapsed_ms = (time.time() - start) * 1000
         RequestLogger.log_response("/api/index", 200, elapsed_ms)
         log_info(f"   Indexed: {result['indexed']}, skipped: {skipped}")
@@ -70,11 +71,12 @@ async def chat(request: ChatRequest) -> ChatResponse:
     try:
         RequestLogger.log_request("/api/chat", "POST",
                                   {"question_len": len(request.question),
-                                   "page_text_len": len(request.current_page_text)})
+                                   "page_text_len": len(request.current_page_text),
+                                   "user_id": request.user_id[:8]})
 
         # 1) Retrieve from Pinecone. Tolerate failures — still answer with page context.
         try:
-            retrieved = pinecone_client.query(text=request.question, top_k=8)
+            retrieved = pinecone_client.query(text=request.question, user_id=request.user_id, top_k=8)
         except Exception as e:
             log_info(f"   ⚠️  Pinecone query failed: {e}")
             retrieved = []
