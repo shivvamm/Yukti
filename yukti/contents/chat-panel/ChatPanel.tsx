@@ -1,3 +1,4 @@
+import RobotIcon from "~components/RobotIcon"
 import type { ChatMessage } from "./types"
 import MessageList from "./MessageList"
 import ChatInput from "./ChatInput"
@@ -37,7 +38,7 @@ export default function ChatPanel({ messages, isLoading, onSend, onClose }: Prop
           borderBottom: "2px solid #334155",
         }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 18 }}>🤖</span>
+          <RobotIcon size={28} />
           <span style={{ fontWeight: "bold", color: "#06b6d4", letterSpacing: 1 }}>
             YUKTI
           </span>
