@@ -2,11 +2,83 @@
 
 import { useState } from 'react'
 
+// ─── Icon components ────────────────────────────────────────────────
+// Inline SVGs to keep the bundle small and the pixel-art aesthetic
+// consistent with the hero robot. Each is 48×48 with chunky strokes.
+
+const IconBrain = () => (
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="square">
+    <circle cx="24" cy="24" r="6" />
+    <circle cx="12" cy="12" r="3" />
+    <circle cx="36" cy="12" r="3" />
+    <circle cx="12" cy="36" r="3" />
+    <circle cx="36" cy="36" r="3" />
+    <line x1="15" y1="15" x2="20" y2="20" />
+    <line x1="33" y1="15" x2="28" y2="20" />
+    <line x1="15" y1="33" x2="20" y2="28" />
+    <line x1="33" y1="33" x2="28" y2="28" />
+  </svg>
+)
+
+const IconTarget = () => (
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#10b981" strokeWidth="3">
+    <circle cx="24" cy="24" r="18" />
+    <circle cx="24" cy="24" r="11" />
+    <circle cx="24" cy="24" r="4" fill="#10b981" />
+  </svg>
+)
+
+const IconBulb = () => (
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
+    <path d="M16 22 Q16 12 24 12 Q32 12 32 22 Q32 28 28 32 L20 32 Q16 28 16 22 Z" />
+    <line x1="20" y1="36" x2="28" y2="36" />
+    <line x1="22" y1="40" x2="26" y2="40" />
+  </svg>
+)
+
+const IconLock = () => (
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
+    <rect x="12" y="22" width="24" height="18" />
+    <path d="M17 22 V16 Q17 10 24 10 Q31 10 31 16 V22" />
+    <circle cx="24" cy="30" r="2" fill="#10b981" />
+  </svg>
+)
+
+const IconBolt = () => (
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#10b981" strokeWidth="3" strokeLinejoin="miter">
+    <path d="M26 6 L14 26 L22 26 L22 42 L34 22 L26 22 Z" fill="#10b981" fillOpacity="0.25" />
+  </svg>
+)
+
+const IconWindow = () => (
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
+    <rect x="8" y="10" width="32" height="22" />
+    <line x1="8" y1="18" x2="40" y2="18" />
+    <circle cx="12" cy="14" r="1.5" fill="#10b981" />
+    <circle cx="16" cy="14" r="1.5" fill="#10b981" />
+    <circle cx="20" cy="14" r="1.5" fill="#10b981" />
+    <path d="M18 25 L24 25 L21 28 Z" fill="#10b981" />
+  </svg>
+)
+
+const IconDownload = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter" className="inline-block mr-2 -mt-1 align-middle">
+    <path d="M12 4 V15" />
+    <path d="M6 11 L12 17 L18 11" />
+    <path d="M4 20 H20" />
+  </svg>
+)
+
+const IconHeart = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="#ef4444" stroke="none" className="inline-block -mt-1 mx-1 align-middle">
+    <path d="M12 21 L3 12 Q3 7 7 7 Q10 7 12 10 Q14 7 17 7 Q21 7 21 12 Z" />
+  </svg>
+)
+
 export default function Home() {
-  const [copied, setCopied] = useState(false)
+  const [_copied, _setCopied] = useState(false)
 
   const handleDownload = () => {
-    // This will be replaced with actual download link
     window.location.href = '/yukti-extension.zip'
   }
 
@@ -68,7 +140,7 @@ export default function Home() {
                      shadow-[0_6px_0_#0891b2] hover:shadow-[0_4px_0_#0891b2]
                      hover:translate-y-[2px] active:translate-y-[6px] active:shadow-none"
           >
-            ⬇ DOWNLOAD EXTENSION
+            <IconDownload />DOWNLOAD EXTENSION
           </button>
         </div>
       </section>
@@ -82,47 +154,47 @@ export default function Home() {
         <div className="grid md:grid-cols-3 gap-8">
           {[
             {
-              icon: '🧠',
+              Icon: IconBrain,
               title: 'SMART LEARNING',
               description: 'Analyzes ALL your browsing interactions to understand your real intent and goals'
             },
             {
-              icon: '🎯',
+              Icon: IconTarget,
               title: 'INTENT ANALYSIS',
               description: 'Deep psychological analysis to detect what you\'re actually trying to accomplish'
             },
             {
-              icon: '💡',
+              Icon: IconBulb,
               title: 'ACTIONABLE HELP',
               description: 'Provides ONE powerful suggestion that directly helps you succeed'
             },
             {
-              icon: '🔒',
+              Icon: IconLock,
               title: 'PRIVACY FIRST',
               description: 'All data stored locally. Full control over what gets tracked'
             },
             {
-              icon: '⚡',
-              title: 'GOOGLE GEMINI',
-              description: 'Powered by Gemini 2.5 with 1M token context window for deep analysis'
+              Icon: IconBolt,
+              title: 'MULTI-LLM',
+              description: 'Plug-in support for Gemini, OpenAI, Groq, and Mistral — switch providers via config'
             },
             {
-              icon: '🎨',
+              Icon: IconWindow,
               title: 'NON-INTRUSIVE',
               description: 'Auto-popup suggestions that hide after 5 seconds. No clutter'
             }
-          ].map((feature, i) => (
+          ].map(({ Icon, title, description }, i) => (
             <div
               key={i}
               className="bg-pixel-blue border-2 border-pixel-slate p-6
                        hover:border-pixel-cyan transition-all group"
             >
-              <div className="text-4xl mb-4">{feature.icon}</div>
+              <div className="mb-4"><Icon /></div>
               <h3 className="text-xl font-bold mb-3 text-pixel-cyan tracking-wide">
-                {feature.title}
+                {title}
               </h3>
               <p className="text-gray-400 leading-relaxed text-sm">
-                {feature.description}
+                {description}
               </p>
             </div>
           ))}
@@ -191,7 +263,7 @@ export default function Home() {
                      shadow-[0_4px_0_#059669] hover:shadow-[0_2px_0_#059669]
                      hover:translate-y-[2px] active:translate-y-[4px] active:shadow-none"
           >
-            ⬇ DOWNLOAD YUKTI.ZIP
+            <IconDownload />DOWNLOAD YUKTI.ZIP
           </button>
         </div>
 
@@ -207,7 +279,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="bg-pixel-blue border-2 border-pixel-slate p-8 mb-8">
+        <div className="bg-pixel-blue border-2 border-pixel-slate p-8">
           <h3 className="text-2xl font-bold mb-6 text-pixel-cyan tracking-wide">
             STEP 3: LOAD IN CHROME
           </h3>
@@ -226,38 +298,11 @@ export default function Home() {
             </li>
             <li className="flex gap-3">
               <span className="text-pixel-cyan font-bold">4.</span>
-              <span>Select the <strong className="text-pixel-green">build/chrome-mv3-prod</strong> folder from the extracted files</span>
+              <span>Select the <strong className="text-pixel-green">chrome-mv3-prod</strong> folder from the extracted files</span>
             </li>
             <li className="flex gap-3">
               <span className="text-pixel-cyan font-bold">5.</span>
-              <span>Yukti is now installed! 🎉</span>
-            </li>
-          </ol>
-        </div>
-
-        <div className="bg-pixel-blue border-2 border-pixel-slate p-8">
-          <h3 className="text-2xl font-bold mb-6 text-pixel-cyan tracking-wide">
-            STEP 4: CONFIGURE API KEY
-          </h3>
-          <p className="text-gray-400 mb-4">
-            Get your free Google Gemini API key and add it to the extension:
-          </p>
-          <ol className="space-y-4 text-gray-400 mb-6">
-            <li className="flex gap-3">
-              <span className="text-pixel-cyan font-bold">1.</span>
-              <span>Visit <a href="https://aistudio.google.com/apikey" target="_blank" className="text-pixel-green underline">Google AI Studio</a></span>
-            </li>
-            <li className="flex gap-3">
-              <span className="text-pixel-cyan font-bold">2.</span>
-              <span>Create and copy your API key</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="text-pixel-cyan font-bold">3.</span>
-              <span>Click the Yukti extension icon → <strong className="text-pixel-cyan">Settings</strong> tab</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="text-pixel-cyan font-bold">4.</span>
-              <span>Paste your API key and click <strong className="text-pixel-green">SAVE KEY</strong></span>
+              <span>Yukti is now installed.</span>
             </li>
           </ol>
         </div>
@@ -266,9 +311,9 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t-4 border-pixel-slate py-8 text-center text-gray-500">
         <p className="mb-2">YUKTI - AI-POWERED BROWSER ASSISTANT</p>
-        <p className="text-sm">Built with ❤️ using Next.js, React, and Google Gemini</p>
+        <p className="text-sm">Built with<IconHeart />using Next.js, React, and LangGraph</p>
         <div className="mt-4 space-x-4">
-          <a href="https://github.com/yourusername/yukti" className="text-pixel-cyan hover:text-pixel-green">
+          <a href="https://github.com/shivvamm/Yukti" className="text-pixel-cyan hover:text-pixel-green">
             GITHUB
           </a>
           <span className="text-pixel-slate">|</span>
