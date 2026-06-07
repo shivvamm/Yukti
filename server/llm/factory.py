@@ -8,13 +8,11 @@ from langchain_core.language_models import BaseChatModel
 from config.settings import settings
 from llm.providers import PROVIDERS
 
-Role = Literal["context_builder", "analyzer", "suggestion"]
+Role = Literal["chat"]
 
-# (settings_model_attr, temperature, max_tokens) — preserves existing per-agent tuning
+# (settings_model_attr, temperature, max_tokens) — single role for the chat pipeline
 ROLE_CONFIG: dict[str, tuple[str, float, int]] = {
-    "context_builder": ("context_builder_model", 0.3, 4096),
-    "analyzer":        ("analyzer_model",        0.4, 4096),
-    "suggestion":      ("suggestion_model",      0.7, 2048),
+    "chat": ("chat_model", 0.5, 1024),
 }
 
 
