@@ -37,7 +37,6 @@ type Tab = "home" | "settings" | "data" | "about"
 
 function IndexPopup() {
   const [activeTab, setActiveTab] = useState<Tab>("home")
-  const [suggestions, setSuggestions] = useState<string[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [interactionsByTab, setInteractionsByTab] = useState<InteractionsByTab>({})
   const [expandedTabs, setExpandedTabs] = useState<{ [tabId: string]: boolean }>({})
@@ -118,7 +117,6 @@ function IndexPopup() {
   // Load initial state
   useEffect(() => {
     loadSettings()
-    loadSuggestions()
     loadStats()
     loadInteractionsByTab()
   }, [])
@@ -163,19 +161,6 @@ function IndexPopup() {
     setDisableNavigation(result.disableNavigation || false)
     setDisableFormInteractions(result.disableFormInteractions || false)
     setDisableInputValues(result.disableInputValues || false)
-  }
-
-  async function loadSuggestions() {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      const response = await chrome.runtime.sendMessage({
-        type: "GET_SUGGESTIONS",
-        url: tab.url
-      })
-      setSuggestions(response || [])
-    } catch (error) {
-      console.error("Failed to load suggestions:", error)
-    }
   }
 
   async function loadStats() {
@@ -282,16 +267,6 @@ function IndexPopup() {
       <div style={styles.content}>
         {activeTab === "home" && (
           <div>
-            <h2 style={styles.sectionTitle}>Suggestions</h2>
-            <div style={styles.suggestions}>
-              {suggestions.map((suggestion, index) => (
-                <div key={index} style={styles.suggestionItem}>
-                  <span style={styles.suggestionIcon}>💡</span>
-                  <p style={styles.suggestionText}>{suggestion}</p>
-                </div>
-              ))}
-            </div>
-
             {stats && (
               <div style={styles.statsSection}>
                 <h3 style={styles.subtitle}>Quick Stats</h3>
@@ -716,29 +691,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: 16,
     borderRadius: 0,
     color: "#fbbf24"
-  },
-  suggestions: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12
-  },
-  suggestionItem: {
-    display: "flex",
-    gap: 12,
-    backgroundColor: "#1e293b",
-    padding: 14,
-    borderRadius: 0,
-    border: "2px solid #334155",
-    borderLeft: "4px solid #10b981"
-  },
-  suggestionIcon: {
-    fontSize: 20
-  },
-  suggestionText: {
-    margin: 0,
-    fontSize: 13,
-    color: "#cbd5e1",
-    lineHeight: 1.6
   },
   statsSection: {
     marginTop: 20,
