@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
 import RobotIcon from "~components/RobotIcon"
+import SpikeMark from "~components/SpikeMark"
+import { color, font, ensureFonts } from "~theme"
 
 interface UserInteraction {
   type: string
@@ -17,9 +19,7 @@ interface TabData {
   tabId: number
   tabTitle: string
   url: string
-  dates: {
-    [dateKey: string]: UserInteraction[]
-  }
+  dates: { [dateKey: string]: UserInteraction[] }
 }
 
 interface InteractionsByTab {
@@ -35,87 +35,31 @@ interface Stats {
 
 type Tab = "home" | "settings" | "data" | "about"
 
+const SETTINGS: { key: string; label: string; desc: string }[] = [
+  { key: "disableClicks", label: "Clicks", desc: "Elements you click on" },
+  { key: "disableScrolling", label: "Scrolling", desc: "Scroll depth on pages" },
+  { key: "disableNavigation", label: "Navigation", desc: "Pages you visit" },
+  { key: "disableFormInteractions", label: "Form focus", desc: "When you click into form fields" },
+  { key: "disableInputValues", label: "Input values", desc: "What you type (passwords never tracked)" },
+]
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "home", label: "Home" },
+  { key: "settings", label: "Settings" },
+  { key: "data", label: "Data" },
+  { key: "about", label: "About" },
+]
+
 function IndexPopup() {
   const [activeTab, setActiveTab] = useState<Tab>("home")
   const [stats, setStats] = useState<Stats | null>(null)
   const [interactionsByTab, setInteractionsByTab] = useState<InteractionsByTab>({})
   const [expandedTabs, setExpandedTabs] = useState<{ [tabId: string]: boolean }>({})
   const [expandedDates, setExpandedDates] = useState<{ [key: string]: boolean }>({})
+  const [disabled, setDisabled] = useState<{ [key: string]: boolean }>({})
 
-  // Settings (opt-out: true = don't track)
-  const [disableClicks, setDisableClicks] = useState(false)
-  const [disableScrolling, setDisableScrolling] = useState(false)
-  const [disableNavigation, setDisableNavigation] = useState(false)
-  const [disableFormInteractions, setDisableFormInteractions] = useState(false)
-  const [disableInputValues, setDisableInputValues] = useState(false)
-
-  // Add CSS for toggle switches and scrollbar
-  const toggleCSS = `
-    .toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .toggle-slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #334155;
-      transition: 0.15s;
-      border-radius: 0;
-      border: 2px solid #1e293b;
-    }
-
-    .toggle-slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 2px;
-      bottom: 2px;
-      background-color: #64748b;
-      transition: 0.15s;
-      border-radius: 0;
-      border: 2px solid #475569;
-    }
-
-    .toggle-switch input:checked + .toggle-slider {
-      background-color: #10b981;
-      border: 2px solid #059669;
-    }
-
-    .toggle-switch input:checked + .toggle-slider:before {
-      transform: translateX(20px);
-      background-color: #0f172a;
-      border: 2px solid #10b981;
-    }
-
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: #1e293b;
-      border-left: 2px solid #334155;
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: #06b6d4;
-      border: 2px solid #0891b2;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-      background: #0891b2;
-    }
-  `
-
-  // Load initial state
   useEffect(() => {
+    ensureFonts()
     loadSettings()
     loadStats()
     loadInteractionsByTab()
@@ -130,37 +74,12 @@ function IndexPopup() {
     }
   }
 
-  function toggleTab(tabId: string, e?: React.MouseEvent) {
-    e?.stopPropagation()
-    e?.preventDefault()
-    setExpandedTabs((prev) => ({ ...prev, [tabId]: !prev[tabId] }))
-  }
-
-  function toggleDate(tabId: string, dateKey: string, e?: React.MouseEvent) {
-    e?.stopPropagation()
-    e?.preventDefault()
-    const key = `${tabId}-${dateKey}`
-    setExpandedDates((prev) => ({ ...prev, [key]: !prev[key] }))
-  }
-
-  function formatTime(timestamp: number): string {
-    return new Date(timestamp).toLocaleTimeString()
-  }
-
   async function loadSettings() {
-    const result = await chrome.storage.local.get([
-      "disableClicks",
-      "disableScrolling",
-      "disableNavigation",
-      "disableFormInteractions",
-      "disableInputValues",
-    ])
-
-    setDisableClicks(result.disableClicks || false)
-    setDisableScrolling(result.disableScrolling || false)
-    setDisableNavigation(result.disableNavigation || false)
-    setDisableFormInteractions(result.disableFormInteractions || false)
-    setDisableInputValues(result.disableInputValues || false)
+    const keys = SETTINGS.map((s) => s.key)
+    const result = await chrome.storage.local.get(keys)
+    const next: { [key: string]: boolean } = {}
+    keys.forEach((k) => (next[k] = result[k] || false))
+    setDisabled(next)
   }
 
   async function loadStats() {
@@ -174,24 +93,22 @@ function IndexPopup() {
 
   async function updateSetting(key: string, value: boolean) {
     await chrome.storage.local.set({ [key]: value })
+    setDisabled((prev) => ({ ...prev, [key]: value }))
+  }
 
-    switch (key) {
-      case "disableClicks":
-        setDisableClicks(value)
-        break
-      case "disableScrolling":
-        setDisableScrolling(value)
-        break
-      case "disableNavigation":
-        setDisableNavigation(value)
-        break
-      case "disableFormInteractions":
-        setDisableFormInteractions(value)
-        break
-      case "disableInputValues":
-        setDisableInputValues(value)
-        break
-    }
+  function toggleTab(tabId: string, e?: React.MouseEvent) {
+    e?.stopPropagation()
+    setExpandedTabs((prev) => ({ ...prev, [tabId]: !prev[tabId] }))
+  }
+
+  function toggleDate(tabId: string, dateKey: string, e?: React.MouseEvent) {
+    e?.stopPropagation()
+    const key = `${tabId}-${dateKey}`
+    setExpandedDates((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  function formatTime(timestamp: number): string {
+    return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   }
 
   async function exportData() {
@@ -207,286 +124,188 @@ function IndexPopup() {
   }
 
   async function deleteAllData() {
-    if (confirm("Are you sure you want to delete all collected data? This cannot be undone.")) {
-      await chrome.storage.local.set({
-        interactions: [],
-        patterns: {
-          frequentUrls: [],
-          commonActions: [],
-          avgTimeSpent: {},
-          scrollBehavior: {}
-        }
-      })
-      loadStats()
-      alert("All data deleted successfully")
-    }
+    if (!confirm("Delete all collected data? This cannot be undone.")) return
+    await chrome.storage.local.set({
+      interactions: [],
+      patterns: { frequentUrls: [], commonActions: [], avgTimeSpent: {}, scrollBehavior: {} },
+    })
+    loadStats()
+    loadInteractionsByTab()
   }
 
   return (
-    <div style={styles.container}>
-      <style>{toggleCSS}</style>
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <RobotIcon size={36} />
-          <h1 style={styles.mainTitle}>Yukti</h1>
-        </div>
-        <div style={styles.statusBadge}>
-          <span
-            style={{
-              ...styles.statusDot,
-              backgroundColor: "#10b981"
-            }}
-          />
-          Active
-        </div>
-      </div>
+    <div className="yk-pop">
+      <style>{POPUP_CSS}</style>
 
-      <div style={styles.tabs}>
-        <button
-          onClick={() => setActiveTab("home")}
-          style={activeTab === "home" ? styles.tabActive : styles.tab}>
-          Home
-        </button>
-        <button
-          onClick={() => setActiveTab("settings")}
-          style={activeTab === "settings" ? styles.tabActive : styles.tab}>
-          Settings
-        </button>
-        <button
-          onClick={() => setActiveTab("data")}
-          style={activeTab === "data" ? styles.tabActive : styles.tab}>
-          Data
-        </button>
-        <button
-          onClick={() => setActiveTab("about")}
-          style={activeTab === "about" ? styles.tabActive : styles.tab}>
-          About
-        </button>
-      </div>
+      {/* Header */}
+      <header className="yk-p-header">
+        <div className="yk-p-brand">
+          <RobotIcon size={32} />
+          <span className="yk-p-wordmark">Yukti</span>
+        </div>
+        <span className="yk-p-online">
+          <span className="yk-p-dot" />
+          tracking
+        </span>
+      </header>
 
-      <div style={styles.content}>
+      {/* Tabs */}
+      <nav className="yk-p-tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`yk-p-tab ${activeTab === t.key ? "is-active" : ""}`}>
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Content */}
+      <div className="yk-p-content">
         {activeTab === "home" && (
-          <div>
-            {stats && (
-              <div style={styles.statsSection}>
-                <h3 style={styles.subtitle}>Quick Stats</h3>
-                <div style={styles.statGrid}>
-                  <div style={styles.statItem}>
-                    <div style={styles.statValue}>{stats.totalInteractions}</div>
-                    <div style={styles.statLabel}>Interactions</div>
-                  </div>
-                  <div style={styles.statItem}>
-                    <div style={styles.statValue}>{stats.topUrls.length}</div>
-                    <div style={styles.statLabel}>Sites Tracked</div>
-                  </div>
-                </div>
+          <div className="yk-p-fade">
+            <p className="yk-p-lede">
+              Your browsing, <em>remembered</em>. Yukti quietly indexes what you do so you can
+              ask about it later.
+            </p>
+            <div className="yk-p-stats">
+              <div className="yk-p-stat">
+                <div className="yk-p-stat-num">{stats?.totalInteractions ?? 0}</div>
+                <div className="yk-p-stat-label">Interactions</div>
               </div>
-            )}
+              <div className="yk-p-stat">
+                <div className="yk-p-stat-num">{stats?.topUrls.length ?? 0}</div>
+                <div className="yk-p-stat-label">Sites tracked</div>
+              </div>
+            </div>
+            <div className="yk-p-hint">
+              <SpikeMark size={12} color={color.primary} />
+              <span>Click the floating robot on any page to start a conversation.</span>
+            </div>
           </div>
         )}
 
         {activeTab === "settings" && (
-          <div>
-            <h2 style={styles.sectionTitle}>Privacy Settings</h2>
-
-            <h3 style={styles.subtitle}>What NOT to Track</h3>
-
-                <div style={styles.setting}>
+          <div className="yk-p-fade">
+            <h2 className="yk-p-h2">Privacy</h2>
+            <p className="yk-p-sub">Turn off anything you'd rather Yukti not track.</p>
+            <div className="yk-p-settings">
+              {SETTINGS.map((s) => (
+                <div key={s.key} className="yk-p-setting">
                   <div>
-                    <div style={styles.settingLabel}>Disable Clicks</div>
-                    <div style={styles.settingDesc}>Stop tracking elements you click</div>
+                    <div className="yk-p-setting-label">{s.label}</div>
+                    <div className="yk-p-setting-desc">{s.desc}</div>
                   </div>
-                  <label className="toggle-switch" style={styles.switch}>
+                  <label className="yk-toggle">
                     <input
                       type="checkbox"
-                      checked={disableClicks}
-                      onChange={(e) => updateSetting("disableClicks", e.target.checked)}
+                      checked={!disabled[s.key]}
+                      onChange={(e) => updateSetting(s.key, !e.target.checked)}
                     />
-                    <span className="toggle-slider"></span>
+                    <span className="yk-slider" />
                   </label>
                 </div>
-
-                <div style={styles.setting}>
-                  <div>
-                    <div style={styles.settingLabel}>Disable Scrolling</div>
-                    <div style={styles.settingDesc}>Stop tracking scroll depth on pages</div>
-                  </div>
-                  <label className="toggle-switch" style={styles.switch}>
-                    <input
-                      type="checkbox"
-                      checked={disableScrolling}
-                      onChange={(e) => updateSetting("disableScrolling", e.target.checked)}
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
-                </div>
-
-                <div style={styles.setting}>
-                  <div>
-                    <div style={styles.settingLabel}>Disable Navigation</div>
-                    <div style={styles.settingDesc}>Stop tracking pages you visit</div>
-                  </div>
-                  <label className="toggle-switch" style={styles.switch}>
-                    <input
-                      type="checkbox"
-                      checked={disableNavigation}
-                      onChange={(e) => updateSetting("disableNavigation", e.target.checked)}
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
-                </div>
-
-                <div style={styles.setting}>
-                  <div>
-                    <div style={styles.settingLabel}>Disable Form Focus</div>
-                    <div style={styles.settingDesc}>
-                      Stop tracking when you click into form fields
-                    </div>
-                  </div>
-                  <label className="toggle-switch" style={styles.switch}>
-                    <input
-                      type="checkbox"
-                      checked={disableFormInteractions}
-                      onChange={(e) => updateSetting("disableFormInteractions", e.target.checked)}
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
-                </div>
-
-                <div style={styles.setting}>
-                  <div>
-                    <div style={styles.settingLabel}>Disable Input Values</div>
-                    <div style={styles.settingDesc}>
-                      Stop tracking what you type (passwords NEVER tracked)
-                    </div>
-                  </div>
-                  <label className="toggle-switch" style={styles.switch}>
-                    <input
-                      type="checkbox"
-                      checked={disableInputValues}
-                      onChange={(e) => updateSetting("disableInputValues", e.target.checked)}
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
-                </div>
-
+              ))}
+            </div>
           </div>
         )}
 
         {activeTab === "data" && (
-          <div>
-            <h2 style={styles.sectionTitle}>Your Data</h2>
-
+          <div className="yk-p-fade">
+            <h2 className="yk-p-h2">Your data</h2>
             {stats && (
-              <div style={styles.dataSection}>
-                <p style={styles.text}>
-                  <strong>Total Interactions:</strong> {stats.totalInteractions}
-                </p>
-                <p style={styles.text}>
-                  <strong>Tracking Since:</strong>{" "}
-                  {new Date(stats.trackingSince).toLocaleDateString()}
-                </p>
-              </div>
+              <p className="yk-p-sub">
+                {stats.totalInteractions.toLocaleString()} interactions tracked since{" "}
+                {new Date(stats.trackingSince).toLocaleDateString()}.
+              </p>
             )}
 
-            <h3 style={styles.subtitle}>Interactions by Tab & Date</h3>
-            <div style={styles.tabList}>
+            <div className="yk-p-tablist">
               {Object.keys(interactionsByTab).length === 0 ? (
-                <p style={styles.emptyMessage}>No tab data yet. Start browsing to see your interactions!</p>
+                <p className="yk-p-empty">Nothing yet — start browsing to build your history.</p>
               ) : (
                 Object.entries(interactionsByTab).map(([tabId, tabData]) => {
                   let hostname = tabData.url
                   try {
-                    hostname = new URL(tabData.url).hostname
-                  } catch (e) {
-                    // If URL parsing fails, use the raw URL
-                  }
-
+                    hostname = new URL(tabData.url).hostname.replace(/^www\./, "")
+                  } catch {}
                   return (
-                    <div key={tabId} style={styles.tabCard}>
-                      <div style={styles.tabHeader} onClick={(e) => toggleTab(tabId, e)}>
-                        <span style={styles.expandIcon}>{expandedTabs[tabId] ? "▼" : "▶"}</span>
-                        <div style={styles.tabInfo}>
-                          <div style={styles.tabTitle}>{tabData.tabTitle}</div>
-                          <div style={styles.tabUrl}>{hostname}</div>
+                    <div key={tabId} className="yk-p-card">
+                      <button className="yk-p-card-head" onClick={(e) => toggleTab(tabId, e)}>
+                        <span className="yk-p-caret">{expandedTabs[tabId] ? "▾" : "▸"}</span>
+                        <div className="yk-p-card-info">
+                          <div className="yk-p-card-title">{tabData.tabTitle || hostname}</div>
+                          <div className="yk-p-card-url">{hostname}</div>
                         </div>
-                      </div>
+                      </button>
 
-                    {expandedTabs[tabId] && (
-                      <div style={styles.dateList}>
-                        {Object.entries(tabData.dates).map(([dateKey, interactions]) => (
-                          <div key={dateKey} style={styles.dateCard}>
-                            <div
-                              style={styles.dateHeader}
-                              onClick={(e) => toggleDate(tabId, dateKey, e)}>
-                              <span style={styles.expandIcon}>
-                                {expandedDates[`${tabId}-${dateKey}`] ? "▼" : "▶"}
-                              </span>
-                              <div style={styles.dateInfo}>
-                                <span style={styles.dateText}>{dateKey}</span>
-                                <span style={styles.countBadge}>
-                                  {interactions.length} actions
+                      {expandedTabs[tabId] && (
+                        <div className="yk-p-dates">
+                          {Object.entries(tabData.dates).map(([dateKey, interactions]) => (
+                            <div key={dateKey} className="yk-p-date">
+                              <button
+                                className="yk-p-date-head"
+                                onClick={(e) => toggleDate(tabId, dateKey, e)}>
+                                <span className="yk-p-caret">
+                                  {expandedDates[`${tabId}-${dateKey}`] ? "▾" : "▸"}
                                 </span>
-                              </div>
+                                <span className="yk-p-date-text">{dateKey}</span>
+                                <span className="yk-p-count">{interactions.length}</span>
+                              </button>
+                              {expandedDates[`${tabId}-${dateKey}`] && (
+                                <div className="yk-p-events">
+                                  {interactions.map((it, index) => (
+                                    <div key={index} className="yk-p-event">
+                                      <span className="yk-p-event-time">{formatTime(it.timestamp)}</span>
+                                      <span className="yk-p-event-type">{it.type}</span>
+                                      {it.elementType && (
+                                        <span className="yk-p-event-detail">{it.elementType}</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-
-                            {expandedDates[`${tabId}-${dateKey}`] && (
-                              <div style={styles.interactionList}>
-                                {interactions.map((interaction, index) => (
-                                  <div key={index} style={styles.interactionItem}>
-                                    <span style={styles.interactionTime}>
-                                      {formatTime(interaction.timestamp)}
-                                    </span>
-                                    <span style={styles.interactionType}>{interaction.type}</span>
-                                    {interaction.elementType && (
-                                      <span style={styles.interactionDetail}>
-                                        {interaction.elementType}
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })
               )}
             </div>
 
-            <div style={styles.buttonGroup}>
-              <button onClick={exportData} style={styles.primaryButton}>
-                Export Data (JSON)
+            <div className="yk-p-actions">
+              <button onClick={exportData} className="yk-p-btn yk-p-btn--primary">
+                Export JSON
               </button>
-              <button onClick={deleteAllData} style={styles.dangerButton}>
-                Delete All Data
+              <button onClick={deleteAllData} className="yk-p-btn yk-p-btn--danger">
+                Delete all
               </button>
             </div>
           </div>
         )}
 
         {activeTab === "about" && (
-          <div>
-            <h2 style={styles.sectionTitle}>About Yukti</h2>
-            <p style={styles.text}>
-              Yukti is an AI-powered browser assistant that learns from your behavior to provide
-              intelligent suggestions.
+          <div className="yk-p-fade">
+            <h2 className="yk-p-h2">About</h2>
+            <p className="yk-p-body">
+              Yukti is a privacy-minded browser assistant. It indexes your interactions into your
+              own vector store, then answers questions about the page you're on and your browsing
+              history.
             </p>
-
-            <h3 style={styles.subtitle}>Privacy First</h3>
-            <ul style={styles.list}>
-              <li>All data is stored locally on your device</li>
-              <li>No data is sent to external servers</li>
-              <li>Sensitive sites (banking, healthcare) are automatically blocked</li>
-              <li>Password and payment fields are never tracked</li>
-              <li>You have complete control over your data</li>
+            <h3 className="yk-p-h3">How your data flows</h3>
+            <ul className="yk-p-ul">
+              <li>Interactions are stored locally and indexed under a private ID unique to you.</li>
+              <li>Retrieval is scoped to your ID — no one else's history is ever searched.</li>
+              <li>Password and payment fields are never tracked.</li>
+              <li>Export or wipe everything from the Data tab at any time.</li>
             </ul>
-
-            <h3 style={styles.subtitle}>Version</h3>
-            <p style={styles.text}>0.0.1</p>
+            <div className="yk-p-version">
+              <SpikeMark size={11} color={color.accent} />
+              <span>Yukti v2.0 · RAG chat</span>
+            </div>
           </div>
         )}
       </div>
@@ -494,460 +313,173 @@ function IndexPopup() {
   )
 }
 
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    width: 360,
-    minHeight: 350,
-    maxHeight: 600,
-    fontFamily: "'Courier New', 'Courier', monospace",
-    backgroundColor: "#0f172a",
-    color: "#e2e8f0",
-    overflow: "hidden"
-  },
-  header: {
-    backgroundColor: "#1e293b",
-    color: "#e2e8f0",
-    padding: "16px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderBottom: "3px solid #06b6d4",
-    boxShadow: "0 2px 0 #334155"
-  },
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12
-  },
-  mainTitle: {
-    margin: 0,
-    fontSize: 22,
-    fontWeight: "bold",
-    letterSpacing: "2px",
-    textTransform: "uppercase"
-  },
-  statusBadge: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#334155",
-    padding: "6px 12px",
-    borderRadius: 0,
-    fontSize: 11,
-    fontWeight: "bold",
-    border: "2px solid #10b981",
-    letterSpacing: "1px"
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 0
-  },
-  tabs: {
-    display: "flex",
-    backgroundColor: "#1e293b",
-    borderBottom: "3px solid #334155"
-  },
-  tab: {
-    flex: 1,
-    padding: "12px",
-    border: "none",
-    backgroundColor: "#1e293b",
-    cursor: "pointer",
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: "bold",
-    letterSpacing: "1px",
-    textTransform: "uppercase",
-    transition: "all 0.15s",
-    borderRight: "2px solid #334155"
-  },
-  tabActive: {
-    flex: 1,
-    padding: "12px",
-    border: "none",
-    backgroundColor: "#334155",
-    cursor: "pointer",
-    fontSize: 12,
-    color: "#06b6d4",
-    fontWeight: "bold",
-    letterSpacing: "1px",
-    textTransform: "uppercase",
-    borderRight: "2px solid #334155",
-    boxShadow: "inset 0 -3px 0 #06b6d4"
-  },
-  content: {
-    padding: 16,
-    maxHeight: 400,
-    overflowY: "auto",
-    backgroundColor: "#0f172a"
-  },
-  consent: {
-    padding: 30,
-    textAlign: "center"
-  },
-  title: {
-    margin: "0 0 16px 0",
-    fontSize: 24,
-    color: "#e2e8f0"
-  },
-  text: {
-    margin: "0 0 16px 0",
-    fontSize: 13,
-    color: "#94a3b8",
-    lineHeight: 1.7
-  },
-  consentSection: {
-    backgroundColor: "#1e293b",
-    padding: 16,
-    borderRadius: 0,
-    marginBottom: 16,
-    textAlign: "left",
-    border: "2px solid #334155"
-  },
-  subtitle: {
-    margin: "0 0 14px 0",
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#06b6d4",
-    textTransform: "uppercase",
-    letterSpacing: "1.5px"
-  },
-  optOutDesc: {
-    margin: "0 0 16px 0",
-    fontSize: 13,
-    color: "#ef4444",
-    lineHeight: 1.5,
-    fontWeight: 500
-  },
-  list: {
-    margin: 0,
-    paddingLeft: 20,
-    fontSize: 13,
-    color: "#94a3b8",
-    lineHeight: 1.8
-  },
-  buttonGroup: {
-    display: "flex",
-    gap: 12,
-    marginTop: 20
-  },
-  primaryButton: {
-    flex: 1,
-    padding: "12px 20px",
-    backgroundColor: "#06b6d4",
-    color: "#0f172a",
-    border: "3px solid #0891b2",
-    borderRadius: 0,
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: "bold",
-    letterSpacing: "1px",
-    textTransform: "uppercase",
-    transition: "all 0.15s",
-    boxShadow: "0 3px 0 #0891b2"
-  },
-  secondaryButton: {
-    flex: 1,
-    padding: "12px 20px",
-    backgroundColor: "#334155",
-    color: "#e2e8f0",
-    border: "3px solid #1e293b",
-    borderRadius: 0,
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: "bold",
-    letterSpacing: "1px",
-    textTransform: "uppercase",
-    transition: "all 0.15s",
-    boxShadow: "0 3px 0 #1e293b"
-  },
-  dangerButton: {
-    flex: 1,
-    padding: "12px 20px",
-    backgroundColor: "#ef4444",
-    color: "#ffffff",
-    border: "3px solid #dc2626",
-    borderRadius: 0,
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: "bold",
-    letterSpacing: "1px",
-    textTransform: "uppercase",
-    transition: "all 0.15s",
-    boxShadow: "0 3px 0 #dc2626"
-  },
-  sectionTitle: {
-    margin: "0 0 16px 0",
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#10b981",
-    textTransform: "uppercase",
-    letterSpacing: "2px"
-  },
-  warning: {
-    backgroundColor: "#451a03",
-    border: "3px solid #f59e0b",
-    padding: 16,
-    borderRadius: 0,
-    color: "#fbbf24"
-  },
-  statsSection: {
-    marginTop: 20,
-    backgroundColor: "#1e293b",
-    padding: 16,
-    borderRadius: 0,
-    border: "3px solid #334155",
-    boxShadow: "0 3px 0 #334155"
-  },
-  statGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 16
-  },
-  statItem: {
-    textAlign: "center",
-    padding: 12,
-    backgroundColor: "#0f172a",
-    border: "2px solid #334155"
-  },
-  statValue: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#06b6d4",
-    fontFamily: "'Courier New', monospace"
-  },
-  statLabel: {
-    fontSize: 11,
-    color: "#64748b",
-    marginTop: 6,
-    textTransform: "uppercase",
-    letterSpacing: "1px",
-    fontWeight: "bold"
-  },
-  setting: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "14px",
-    borderBottom: "2px solid #334155",
-    backgroundColor: "#1e293b",
-    marginBottom: 8
-  },
-  settingLabel: {
-    fontSize: 13,
-    fontWeight: "bold",
-    color: "#e2e8f0",
-    marginBottom: 4,
-    letterSpacing: "0.5px"
-  },
-  settingDesc: {
-    fontSize: 11,
-    color: "#64748b"
-  },
-  switch: {
-    position: "relative",
-    display: "inline-block",
-    width: 44,
-    height: 24
-  },
-  dataSection: {
-    backgroundColor: "#1e293b",
-    padding: 16,
-    borderRadius: 0,
-    marginBottom: 16,
-    border: "3px solid #334155",
-    boxShadow: "0 3px 0 #334155"
-  },
-  topSites: {
-    marginTop: 16
-  },
-  urlItem: {
-    display: "flex",
-    alignItems: "center",
-    padding: "8px 0",
-    fontSize: 13,
-    color: "#cbd5e1"
-  },
-  urlRank: {
-    fontWeight: "bold",
-    marginRight: 8,
-    color: "#06b6d4"
-  },
-  urlText: {
-    flex: 1
-  },
-  tabList: {
-    marginBottom: 16
-  },
-  tabCard: {
-    backgroundColor: "#1e293b",
-    border: "2px solid #334155",
-    borderRadius: 0,
-    marginBottom: 12,
-    overflow: "hidden"
-  },
-  tabHeader: {
-    display: "flex",
-    alignItems: "center",
-    padding: 12,
-    cursor: "pointer",
-    gap: 8,
-    backgroundColor: "#334155",
-    borderBottom: "2px solid #06b6d4"
-  },
-  tabInfo: {
-    flex: 1
-  },
-  tabTitle: {
-    fontSize: 13,
-    fontWeight: "bold",
-    color: "#e2e8f0",
-    marginBottom: 4,
-    letterSpacing: "0.5px"
-  },
-  tabUrl: {
-    fontSize: 11,
-    color: "#64748b"
-  },
-  expandIcon: {
-    fontSize: 12,
-    color: "#06b6d4",
-    width: 16,
-    fontWeight: "bold"
-  },
-  dateList: {
-    padding: 8,
-    backgroundColor: "#0f172a"
-  },
-  dateCard: {
-    backgroundColor: "#1e293b",
-    border: "2px solid #334155",
-    borderRadius: 0,
-    marginBottom: 8,
-    overflow: "hidden"
-  },
-  dateHeader: {
-    display: "flex",
-    alignItems: "center",
-    padding: 10,
-    cursor: "pointer",
-    gap: 8,
-    backgroundColor: "#334155"
-  },
-  dateInfo: {
-    flex: 1,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center"
-  },
-  dateText: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: "#94a3b8",
-    letterSpacing: "0.5px"
-  },
-  countBadge: {
-    fontSize: 10,
-    padding: "4px 8px",
-    backgroundColor: "#10b981",
-    color: "#0f172a",
-    borderRadius: 0,
-    fontWeight: "bold",
-    letterSpacing: "0.5px",
-    border: "2px solid #059669"
-  },
-  interactionList: {
-    padding: 8,
-    backgroundColor: "#0f172a"
-  },
-  interactionItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: 6,
-    fontSize: 11,
-    borderBottom: "1px solid #1e293b"
-  },
-  interactionTime: {
-    color: "#64748b",
-    fontWeight: "bold",
-    minWidth: 70,
-    fontFamily: "'Courier New', monospace"
-  },
-  interactionType: {
-    color: "#06b6d4",
-    fontWeight: "bold",
-    textTransform: "uppercase",
-    fontSize: 10,
-    letterSpacing: "0.5px"
-  },
-  interactionDetail: {
-    color: "#475569",
-    fontSize: 10
-  },
-  emptyMessage: {
-    textAlign: "center",
-    color: "#64748b",
-    fontSize: 12,
-    padding: 20,
-    fontStyle: "italic"
-  },
-  apiKeySection: {
-    backgroundColor: "#1e293b",
-    padding: 16,
-    border: "2px solid #334155",
-    marginTop: 8
-  },
-  apiKeyInputWrapper: {
-    display: "flex",
-    gap: 8,
-    marginTop: 12
-  },
-  apiKeyInput: {
-    flex: 1,
-    padding: "10px 12px",
-    backgroundColor: "#0f172a",
-    border: "2px solid #334155",
-    borderRadius: 0,
-    color: "#e2e8f0",
-    fontSize: 13,
-    fontFamily: "'Courier New', monospace",
-    outline: "none"
-  },
-  apiKeyToggle: {
-    padding: "10px 12px",
-    backgroundColor: "#334155",
-    border: "2px solid #1e293b",
-    borderRadius: 0,
-    color: "#e2e8f0",
-    cursor: "pointer",
-    fontSize: 14
-  },
-  saveApiKeyButton: {
-    width: "100%",
-    marginTop: 12,
-    padding: "12px",
-    backgroundColor: "#06b6d4",
-    color: "#0f172a",
-    border: "3px solid #0891b2",
-    borderRadius: 0,
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: "bold",
-    letterSpacing: "1px",
-    textTransform: "uppercase",
-    boxShadow: "0 3px 0 #0891b2"
-  },
-  apiKeyHint: {
-    marginTop: 12,
-    fontSize: 11,
-    color: "#64748b"
-  },
-  apiKeyLink: {
-    color: "#06b6d4",
-    textDecoration: "none"
-  }
+const POPUP_CSS = `
+.yk-pop {
+  width: 380px;
+  min-height: 360px;
+  max-height: 600px;
+  display: flex;
+  flex-direction: column;
+  background: ${color.canvas};
+  color: ${color.body};
+  font-family: ${font.sans};
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
+.yk-pop * { box-sizing: border-box; }
+
+/* Header */
+.yk-p-header {
+  position: relative;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid ${color.hairlineSoft};
+}
+.yk-p-header::after {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 90px; pointer-events: none;
+  background: radial-gradient(110% 80% at 14% 0%, rgba(34,211,238,0.10), transparent 70%);
+}
+.yk-p-brand { display: flex; align-items: center; gap: 11px; position: relative; }
+.yk-p-wordmark {
+  font-family: ${font.serif}; font-weight: 500; font-size: 24px;
+  letter-spacing: -0.5px; color: ${color.ink}; line-height: 1;
+}
+.yk-p-online {
+  display: flex; align-items: center; gap: 6px; position: relative;
+  font-size: 11px; font-weight: 500; letter-spacing: 0.3px; color: ${color.muted};
+}
+.yk-p-dot { width: 7px; height: 7px; border-radius: 50%; background: ${color.accent}; box-shadow: 0 0 0 3px rgba(52,211,153,0.14); }
+
+/* Tabs */
+.yk-p-tabs { display: flex; gap: 2px; padding: 6px 12px 0; border-bottom: 1px solid ${color.hairlineSoft}; }
+.yk-p-tab {
+  position: relative;
+  flex: 1; padding: 9px 6px 11px; border: none; background: transparent; cursor: pointer;
+  font-family: ${font.sans}; font-size: 13px; font-weight: 500; color: ${color.muted};
+  transition: color 0.15s;
+}
+.yk-p-tab:hover { color: ${color.bodyStrong}; }
+.yk-p-tab.is-active { color: ${color.ink}; }
+.yk-p-tab.is-active::after {
+  content: ""; position: absolute; left: 14%; right: 14%; bottom: -1px; height: 2px;
+  background: ${color.primary}; border-radius: 2px;
+}
+
+/* Content */
+.yk-p-content { flex: 1; overflow-y: auto; padding: 20px 18px; background: ${color.surface}; }
+.yk-p-content::-webkit-scrollbar { width: 10px; }
+.yk-p-content::-webkit-scrollbar-thumb { background: ${color.hairline}; border-radius: 99px; border: 3px solid ${color.surface}; }
+.yk-p-fade { animation: yk-p-fade 0.25s ease; }
+@keyframes yk-p-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.yk-p-h2 {
+  font-family: ${font.serif}; font-weight: 400; font-size: 24px; letter-spacing: -0.5px;
+  color: ${color.ink}; margin: 0 0 4px;
+}
+.yk-p-h3 {
+  font-family: ${font.serif}; font-weight: 500; font-size: 16px; letter-spacing: -0.2px;
+  color: ${color.ink}; margin: 20px 0 8px;
+}
+.yk-p-sub { font-size: 13px; color: ${color.muted}; margin: 0 0 18px; line-height: 1.5; }
+.yk-p-body { font-size: 13.5px; color: ${color.body}; line-height: 1.6; margin: 0 0 4px; }
+.yk-p-lede {
+  font-family: ${font.serif}; font-weight: 400; font-size: 19px; line-height: 1.4;
+  letter-spacing: -0.3px; color: ${color.bodyStrong}; margin: 0 0 22px;
+}
+.yk-p-lede em { color: ${color.primary}; font-style: italic; }
+
+/* Home stats */
+.yk-p-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.yk-p-stat {
+  background: ${color.card}; border: 1px solid ${color.hairline}; border-radius: 12px;
+  padding: 18px 16px; text-align: left;
+}
+.yk-p-stat-num {
+  font-family: ${font.serif}; font-weight: 500; font-size: 38px; line-height: 1;
+  letter-spacing: -1px; color: ${color.ink};
+}
+.yk-p-stat-label {
+  font-size: 11px; font-weight: 500; letter-spacing: 0.4px; text-transform: uppercase;
+  color: ${color.muted}; margin-top: 8px;
+}
+.yk-p-hint {
+  display: flex; gap: 9px; align-items: flex-start;
+  background: ${color.card}; border: 1px solid ${color.hairline}; border-radius: 12px;
+  padding: 13px 14px; font-size: 12.5px; line-height: 1.5; color: ${color.body};
+}
+
+/* Settings */
+.yk-p-settings { display: flex; flex-direction: column; gap: 8px; }
+.yk-p-setting {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: ${color.card}; border: 1px solid ${color.hairline}; border-radius: 12px;
+  padding: 13px 15px;
+}
+.yk-p-setting-label { font-size: 13.5px; font-weight: 600; color: ${color.ink}; }
+.yk-p-setting-desc { font-size: 11.5px; color: ${color.muted}; margin-top: 3px; }
+
+/* Toggle */
+.yk-toggle { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+.yk-toggle input { opacity: 0; width: 0; height: 0; }
+.yk-slider {
+  position: absolute; inset: 0; cursor: pointer;
+  background: ${color.hairline}; border-radius: 999px; transition: background 0.18s;
+}
+.yk-slider::before {
+  content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px;
+  background: ${color.muted}; border-radius: 50%; transition: transform 0.18s, background 0.18s;
+}
+.yk-toggle input:checked + .yk-slider { background: ${color.accentDeep}; }
+.yk-toggle input:checked + .yk-slider::before { transform: translateX(18px); background: ${color.onPrimary}; }
+
+/* Data accordion */
+.yk-p-tablist { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+.yk-p-empty { text-align: center; color: ${color.muted}; font-size: 12.5px; padding: 28px 12px; font-style: italic; }
+.yk-p-card { background: ${color.card}; border: 1px solid ${color.hairline}; border-radius: 12px; overflow: hidden; }
+.yk-p-card-head, .yk-p-date-head {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 12px 14px; background: transparent; border: none; cursor: pointer; text-align: left;
+  font-family: ${font.sans};
+}
+.yk-p-card-head:hover, .yk-p-date-head:hover { background: ${color.elevated}; }
+.yk-p-caret { color: ${color.primary}; font-size: 11px; width: 12px; flex-shrink: 0; }
+.yk-p-card-info { flex: 1; min-width: 0; }
+.yk-p-card-title { font-size: 13px; font-weight: 600; color: ${color.ink}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yk-p-card-url { font-size: 11px; color: ${color.muted}; margin-top: 2px; }
+.yk-p-dates { padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+.yk-p-date { background: ${color.canvas}; border: 1px solid ${color.hairlineSoft}; border-radius: 8px; overflow: hidden; }
+.yk-p-date-head { padding: 9px 12px; }
+.yk-p-date-text { flex: 1; font-size: 12px; font-weight: 500; color: ${color.body}; }
+.yk-p-count {
+  font-size: 11px; font-weight: 600; color: ${color.accent};
+  background: rgba(52,211,153,0.10); border: 1px solid rgba(52,211,153,0.25);
+  border-radius: 999px; padding: 1px 9px;
+}
+.yk-p-events { padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 2px; }
+.yk-p-event { display: flex; align-items: center; gap: 9px; padding: 4px 0; font-size: 11px; }
+.yk-p-event-time { color: ${color.mutedSoft}; font-family: ${font.mono}; font-size: 10.5px; min-width: 52px; }
+.yk-p-event-type { color: ${color.primary}; font-weight: 600; font-size: 10.5px; }
+.yk-p-event-detail { color: ${color.mutedSoft}; font-size: 10.5px; }
+
+/* Buttons */
+.yk-p-actions { display: flex; gap: 10px; }
+.yk-p-btn {
+  flex: 1; padding: 11px 16px; border-radius: 8px; cursor: pointer;
+  font-family: ${font.sans}; font-size: 13px; font-weight: 600; transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.yk-p-btn--primary { background: ${color.primary}; color: ${color.onPrimary}; border: none; }
+.yk-p-btn--primary:hover { background: ${color.primaryDeep}; }
+.yk-p-btn--danger { background: transparent; color: ${color.error}; border: 1px solid ${color.errorBorder}; }
+.yk-p-btn--danger:hover { background: ${color.errorSurface}; }
+
+/* About */
+.yk-p-ul { margin: 0; padding-left: 18px; font-size: 13px; color: ${color.body}; line-height: 1.7; }
+.yk-p-ul li { margin: 5px 0; }
+.yk-p-ul li::marker { color: ${color.primaryDeep}; }
+.yk-p-version {
+  display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 16px;
+  border-top: 1px solid ${color.hairlineSoft}; font-size: 12px; color: ${color.muted};
+}
+`
 
 export default IndexPopup

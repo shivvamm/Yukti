@@ -1,7 +1,9 @@
 import type { PlasmoCSConfig } from "plasmo"
 import { useEffect, useState, type MouseEvent } from "react"
 import RobotIcon from "~components/RobotIcon"
+import { ensureFonts } from "~theme"
 import ChatPanel from "./chat-panel/ChatPanel"
+import { PANEL_CSS } from "./chat-panel/styles"
 import type { ChatMessage, ChatSource } from "./chat-panel/types"
 
 export const config: PlasmoCSConfig = {
@@ -9,7 +11,7 @@ export const config: PlasmoCSConfig = {
   all_frames: false,
 }
 
-const BUBBLE_SIZE = 64
+const BUBBLE_SIZE = 60
 const PAGE_TEXT_LIMIT = 3000  // chars sent to /api/chat as current_page_text
 
 interface ChatReply {
@@ -37,6 +39,13 @@ const FloatingChatbot = () => {
     },
   ])
   const [isLoading, setIsLoading] = useState(false)
+
+  // Load the editorial webfonts into the host page once (reachable inside
+  // our shadow root). Best-effort — falls back to Georgia/system if a
+  // strict host CSP blocks Google Fonts.
+  useEffect(() => {
+    ensureFonts()
+  }, [])
 
   // ── drag ──────────────────────────────────────────────────────────
   const onMouseDown = (e: MouseEvent<HTMLDivElement>) => {
@@ -127,22 +136,22 @@ const FloatingChatbot = () => {
 
   // ── render ───────────────────────────────────────────────────────
   return (
-    <>
-      <div
-        onMouseDown={onMouseDown}
-        onClick={onBubbleClick}
-        style={{
-          position: "fixed",
-          left: position.x,
-          top: position.y,
-          width: BUBBLE_SIZE,
-          height: BUBBLE_SIZE,
-          cursor: isDragging ? "grabbing" : "grab",
-          zIndex: 2147483646,
-          userSelect: "none",
-        }}>
-        <RobotIcon />
-      </div>
+    <div className="yk-root">
+      <style>{PANEL_CSS}</style>
+      {!isOpen && (
+        <div
+          className="yk-launcher"
+          onMouseDown={onMouseDown}
+          onClick={onBubbleClick}
+          style={{
+            left: position.x,
+            top: position.y,
+            cursor: isDragging ? "grabbing" : "grab",
+          }}>
+          <RobotIcon size={38} />
+          <span className="yk-launcher-status" />
+        </div>
+      )}
       {isOpen && (
         <ChatPanel
           messages={messages}
@@ -151,7 +160,7 @@ const FloatingChatbot = () => {
           onClose={() => setIsOpen(false)}
         />
       )}
-    </>
+    </div>
   )
 }
 

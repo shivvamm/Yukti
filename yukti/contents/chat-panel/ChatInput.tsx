@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react"
+import { useRef, useState, type KeyboardEvent } from "react"
 
 interface Props {
   disabled: boolean
@@ -7,12 +7,14 @@ interface Props {
 
 export default function ChatInput({ disabled, onSend }: Props) {
   const [text, setText] = useState("")
+  const ref = useRef<HTMLTextAreaElement | null>(null)
 
   const submit = () => {
     const t = text.trim()
     if (!t || disabled) return
     onSend(t)
     setText("")
+    if (ref.current) ref.current.style.height = "auto"
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -22,47 +24,39 @@ export default function ChatInput({ disabled, onSend }: Props) {
     }
   }
 
+  // Auto-grow the textarea up to the CSS max-height.
+  const onInput = () => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${el.scrollHeight}px`
+  }
+
+  const canSend = !disabled && text.trim().length > 0
+
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 8,
-        padding: 8,
-        borderTop: "2px solid #334155",
-        background: "#1e293b",
-      }}>
+    <div className="yk-composer">
       <textarea
+        ref={ref}
+        className="yk-input"
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onInput={onInput}
         onKeyDown={onKeyDown}
-        placeholder={disabled ? "Waiting…" : "Ask anything…"}
+        placeholder={disabled ? "Yukti is replying…" : "Ask anything…"}
         disabled={disabled}
-        rows={2}
-        style={{
-          flex: 1,
-          padding: 8,
-          background: "#0f172a",
-          color: "#e2e8f0",
-          border: "1px solid #334155",
-          borderRadius: 4,
-          fontSize: 13,
-          fontFamily: "inherit",
-          resize: "none",
-        }}
+        rows={1}
       />
       <button
+        className="yk-send"
         onClick={submit}
-        disabled={disabled || !text.trim()}
-        style={{
-          padding: "0 16px",
-          background: disabled || !text.trim() ? "#475569" : "#06b6d4",
-          color: "#0f172a",
-          border: "2px solid #0891b2",
-          fontWeight: "bold",
-          fontSize: 12,
-          cursor: disabled || !text.trim() ? "not-allowed" : "pointer",
-        }}>
-        {disabled ? "…" : "SEND"}
+        disabled={!canSend}
+        aria-label="Send message">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"
+          strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 19V5" />
+          <path d="M5 12l7-7 7 7" />
+        </svg>
       </button>
     </div>
   )
