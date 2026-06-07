@@ -140,16 +140,19 @@ const FloatingChatbot = () => {
       <style>{PANEL_CSS}</style>
       {!isOpen && (
         <div
-          className="yk-launcher"
           onMouseDown={onMouseDown}
           onClick={onBubbleClick}
           style={{
+            position: "fixed",
             left: position.x,
             top: position.y,
+            width: BUBBLE_SIZE,
+            height: BUBBLE_SIZE,
             cursor: isDragging ? "grabbing" : "grab",
+            zIndex: 2147483646,
+            userSelect: "none",
           }}>
-          <RobotIcon size={38} />
-          <span className="yk-launcher-status" />
+          <RobotIcon size={BUBBLE_SIZE} />
         </div>
       )}
       {isOpen && (

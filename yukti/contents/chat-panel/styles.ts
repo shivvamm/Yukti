@@ -326,37 +326,4 @@ export const PANEL_CSS = `
 .yk-send:active:not(:disabled) { transform: translateY(1px); }
 .yk-send:disabled { background: ${color.primaryDisabled}; color: ${color.mutedSoft}; cursor: not-allowed; }
 .yk-send svg { width: 18px; height: 18px; }
-
-/* ── Floating launcher bubble ────────────────────────────────── */
-.yk-launcher {
-  position: fixed;
-  width: 60px; height: 60px;
-  display: grid; place-items: center;
-  border-radius: 50%;
-  background: ${color.canvas};
-  border: 1px solid ${color.hairline};
-  z-index: 2147483646;
-  user-select: none;
-  box-shadow: 0 10px 28px -8px rgba(2, 6, 16, 0.7);
-  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s;
-}
-.yk-launcher:hover { transform: scale(1.06); border-color: ${color.primaryDeep}; }
-.yk-launcher::before {
-  content: "";
-  position: absolute; inset: -4px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(34, 211, 238, 0.35);
-  animation: yk-ring 2.6s ease-out infinite;
-}
-@keyframes yk-ring {
-  0% { transform: scale(0.92); opacity: 0.8; }
-  70% { transform: scale(1.18); opacity: 0; }
-  100% { opacity: 0; }
-}
-.yk-launcher-status {
-  position: absolute; bottom: 4px; right: 4px;
-  width: 12px; height: 12px; border-radius: 50%;
-  background: ${color.accent};
-  border: 2px solid ${color.canvas};
-}
 `
