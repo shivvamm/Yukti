@@ -18,10 +18,15 @@ class Settings(BaseSettings):
     groq_api_key:    str = ""
     mistral_api_key: str = ""
 
-    # Model Configuration (Gemini 2.5 models) - New 3-Agent Architecture
-    context_builder_model: str = "gemini-2.5-flash"  # Fast context extraction
-    analyzer_model: str = "gemini-2.5-pro"  # Deep intent analysis
-    suggestion_model: str = "gemini-2.5-pro"  # Actionable suggestions
+    # Chat model (used by the single chat role in the LLM factory)
+    chat_model: str = "gemini-2.5-pro"
+
+    # Pinecone (RAG vector store with integrated embeddings)
+    pinecone_api_key:     str = ""
+    pinecone_index_name:  str = "yukti-interactions"
+    pinecone_embed_model: str = "multilingual-e5-large"
+    pinecone_cloud:       str = "aws"
+    pinecone_region:      str = "us-east-1"
 
     # Model Parameters
     temperature: float = 0.7
@@ -89,9 +94,7 @@ def validate_settings():
 
     print(f"✅ Settings loaded successfully")
     print(f"   - Provider: {settings.llm_provider}")
-    print(f"   - Context Builder: {settings.context_builder_model}")
-    print(f"   - Intent Analyzer: {settings.analyzer_model}")
-    print(f"   - Suggestion: {settings.suggestion_model}")
+    print(f"   - Chat model: {settings.chat_model}")
     print(f"   - Server: {settings.host}:{settings.port}")
     print(f"   - Debug Mode: {settings.debug}")
 
