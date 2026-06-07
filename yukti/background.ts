@@ -68,7 +68,6 @@ chrome.runtime.onInstalled.addListener(() => {
       scrollBehavior: {}
     },
     batchCounter: 0, // Counter for batch sending
-    serverSuggestions: [] // Store suggestions from server
   })
   console.log("Yukti: Extension installed, tracking everything automatically")
 })
@@ -76,7 +75,6 @@ chrome.runtime.onInstalled.addListener(() => {
 // Handle messages from content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "RECORD_INTERACTION") {
-    // Add tab information from sender
     const interaction = message.data
     if (sender.tab) {
       interaction.tabId = sender.tab.id
@@ -85,14 +83,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     recordInteraction(interaction)
     sendResponse({ success: true })
-  } else if (message.type === "GET_SUGGESTIONS") {
-    getSuggestions(message.url).then(sendResponse)
-    return true // Will respond asynchronously
   } else if (message.type === "GET_STATS") {
     getStats().then(sendResponse)
     return true
-  } else if (message.type === "GET_SERVER_SUGGESTIONS") {
-    getServerSuggestions().then(sendResponse)
+  } else if (message.type === "ASK_CHAT") {
+    askChat(message.payload).then(sendResponse)
     return true
   }
 })
@@ -268,7 +263,7 @@ async function sendToServer(currentInteraction: UserInteraction) {
     console.log(`📋 Yukti: Payload:`, { ...payload, page_content: `${pageContent.substring(0, 100)}...` })
 
     // Call server API
-    const response = await fetch(`${SERVER_URL}/api/analyze`, {
+    const response = await fetch(`${SERVER_URL}/api/index`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -282,65 +277,10 @@ async function sendToServer(currentInteraction: UserInteraction) {
 
     const data = await response.json()
 
-    console.log(`✅ Yukti: Received response from server`)
-    console.log(`   Suggestions: ${data.suggestions?.length || 0}`)
-    console.log(`   Confidence: ${data.confidence?.toFixed(2) || 0}`)
-
-    // Store suggestions for chatbot to retrieve
-    await chrome.storage.local.set({
-      serverSuggestions: data.suggestions || [],
-      lastServerUpdate: Date.now()
-    })
-
-    // Notify chatbot about new suggestions
-    notifyChatbot()
+    console.log(`✅ Yukti: Indexed ${data.indexed || 0} interactions (skipped ${data.skipped || 0})`)
 
   } catch (error) {
     console.error("❌ Yukti: Failed to send to server:", error)
-    // Store error for chatbot to display
-    await chrome.storage.local.set({
-      serverError: error.message,
-      serverSuggestions: []
-    })
-  }
-}
-
-// Notify chatbot about new suggestions
-function notifyChatbot() {
-  chrome.tabs.query({}, (tabs) => {
-    tabs.forEach((tab) => {
-      if (tab.id) {
-        chrome.tabs.sendMessage(tab.id, {
-          type: "SERVER_SUGGESTIONS_UPDATED"
-        }).catch(() => {
-          // Ignore errors for tabs without content script
-        })
-      }
-    })
-  })
-}
-
-// Get server suggestions (called by chatbot)
-async function getServerSuggestions() {
-  try {
-    const result = await chrome.storage.local.get([
-      "serverSuggestions",
-      "lastServerUpdate",
-      "serverError"
-    ])
-
-    return {
-      suggestions: result.serverSuggestions || [],
-      lastUpdate: result.lastServerUpdate || null,
-      error: result.serverError || null
-    }
-  } catch (error) {
-    console.error("Failed to get server suggestions:", error)
-    return {
-      suggestions: [],
-      lastUpdate: null,
-      error: error.message
-    }
   }
 }
 
@@ -425,74 +365,6 @@ async function updatePatterns(interactions: UserInteraction[]) {
   }
 }
 
-// Get AI suggestions based on current URL and patterns
-async function getSuggestions(currentUrl: string): Promise<string[]> {
-  try {
-    const result = await chrome.storage.local.get(["patterns", "interactions"])
-    const patterns: UserPattern = result.patterns || {
-      frequentUrls: [],
-      commonActions: [],
-      avgTimeSpent: {},
-      scrollBehavior: {}
-    }
-    const interactions: UserInteraction[] = result.interactions || []
-
-    const suggestions: string[] = []
-
-    // Suggestion 1: Frequently visited sites
-    const topUrls = patterns.frequentUrls.slice(0, 3)
-    if (topUrls.length > 0) {
-      suggestions.push(
-        `You frequently visit: ${topUrls.map((u) => new URL(u.url).hostname).join(", ")}`
-      )
-    }
-
-    // Suggestion 2: Time spent analysis
-    const currentUrlTimeSpent = patterns.avgTimeSpent[currentUrl]
-    if (currentUrlTimeSpent) {
-      const minutes = Math.round(currentUrlTimeSpent / 1000 / 60)
-      suggestions.push(`You typically spend ${minutes} minutes on this page`)
-    }
-
-    // Suggestion 3: Scroll behavior
-    const scrollDepths = patterns.scrollBehavior[currentUrl]
-    if (scrollDepths && scrollDepths.length > 5) {
-      const avgScroll = scrollDepths.reduce((sum, d) => sum + d, 0) / scrollDepths.length
-      if (avgScroll < 30) {
-        suggestions.push("You usually don't scroll much on this page - content below might not interest you")
-      } else if (avgScroll > 80) {
-        suggestions.push("You typically read this entire page - there might be interesting content below")
-      }
-    }
-
-    // Suggestion 4: Similar pages visited
-    const currentDomain = new URL(currentUrl).hostname
-    const sameDomainVisits = patterns.frequentUrls.filter((u) =>
-      new URL(u.url).hostname.includes(currentDomain)
-    )
-    if (sameDomainVisits.length > 1) {
-      suggestions.push(`You've visited ${sameDomainVisits.length} pages on this site`)
-    }
-
-    // Suggestion 5: Recent activity pattern
-    const recentInteractions = interactions.slice(-100)
-    const recentClicks = recentInteractions.filter((i) => i.type === "click").length
-    if (recentClicks > 50) {
-      suggestions.push("You've been very active recently - consider taking a break")
-    }
-
-    // Default suggestion if no patterns yet
-    if (suggestions.length === 0) {
-      suggestions.push("Keep browsing! I'm learning your patterns to provide better suggestions.")
-    }
-
-    return suggestions
-  } catch (error) {
-    console.error("Failed to get suggestions:", error)
-    return ["Error loading suggestions"]
-  }
-}
-
 // Get statistics for display
 async function getStats() {
   try {
@@ -574,5 +446,57 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
     console.log(`🔄 Yukti: Tab activated (ID: ${tab.id})`)
   })
 })
+
+interface ChatTurn {
+  role: "user" | "assistant"
+  content: string
+}
+
+interface AskChatPayload {
+  question: string
+  current_url: string
+  current_page_text: string
+  chat_history: ChatTurn[]
+}
+
+interface ChatSource {
+  url: string
+  timestamp: number
+  snippet: string
+}
+
+interface ChatReply {
+  success: boolean
+  answer: string | null
+  sources: ChatSource[]
+  error: string | null
+}
+
+async function askChat(payload: AskChatPayload): Promise<ChatReply> {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      const text = await response.text().catch(() => "")
+      return {
+        success: false,
+        answer: null,
+        sources: [],
+        error: `Server returned ${response.status}: ${text}`,
+      }
+    }
+    return (await response.json()) as ChatReply
+  } catch (e) {
+    return {
+      success: false,
+      answer: null,
+      sources: [],
+      error: e instanceof Error ? e.message : String(e),
+    }
+  }
+}
 
 console.log("Yukti: Background service worker initialized with tab tracking")
