@@ -75,6 +75,24 @@ const FloatingChatbot = () => {
     setIsOpen((v) => !v)
   }
 
+  // ── click-outside to close ────────────────────────────────────────
+  // The panel lives in a shadow root, so a normal target check fails
+  // (events retarget to the host at the boundary). composedPath() gives
+  // the full path including our shadow nodes — close unless the click
+  // landed inside `.yk-panel`.
+  useEffect(() => {
+    if (!isOpen) return
+    const onDocDown = (e: globalThis.MouseEvent) => {
+      const path = (e.composedPath?.() || []) as EventTarget[]
+      const insidePanel = path.some(
+        (n) => n instanceof HTMLElement && n.classList?.contains("yk-panel")
+      )
+      if (!insidePanel) setIsOpen(false)
+    }
+    window.addEventListener("mousedown", onDocDown, true)
+    return () => window.removeEventListener("mousedown", onDocDown, true)
+  }, [isOpen])
+
   // ── chat send ────────────────────────────────────────────────────
   const onSend = async (text: string) => {
     const userMsg: ChatMessage = {
