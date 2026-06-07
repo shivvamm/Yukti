@@ -215,14 +215,12 @@ export default function Home() {
               <span className="w-3 h-3 rounded-full bg-[#3a2630]" />
               <span className="w-3 h-3 rounded-full bg-[#3a3326]" />
               <span className="w-3 h-3 rounded-full bg-[#26352f]" />
-              <span className="ml-2 text-xs text-muted-soft font-mono">terminal</span>
+              <span className="ml-2 text-xs text-muted-soft font-mono">chrome://extensions</span>
             </div>
             <pre className="p-5 text-[13px] leading-relaxed font-mono text-body overflow-x-auto">
-<span className="text-muted-soft"># start the server with your provider + Pinecone key</span>{'\n'}
-<span className="text-green">cd</span> server{'\n'}
-<span className="text-green">source</span> .venv/bin/activate{'\n'}
-<span className="text-cyan">uvicorn</span> main:app --port <span className="text-[#fbbf77]">8000</span>{'\n\n'}
-<span className="text-muted-soft"># then load the extension and ask away</span>
+<span className="text-muted-soft"># enable Developer mode → Load unpacked</span>{'\n'}
+<span className="text-muted-soft"># select the extracted chrome-mv3-prod folder</span>{'\n\n'}
+<span className="text-muted-soft"># click the Yukti icon and start asking</span>
             </pre>
           </div>
         </div>
