@@ -9,9 +9,9 @@ import uvicorn
 
 # Create FastAPI app
 app = FastAPI(
-    title="Yukti Multi-Agent Server",
-    description="AI-powered browser behavior analysis with LangGraph multi-agent system",
-    version="1.0.0",
+    title="Yukti RAG Chat Server",
+    description="On-demand chat assistant grounded in browsing history (Pinecone RAG) + live page DOM",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -39,14 +39,13 @@ async def startup_event():
     # Config validation already ran at config.settings import time; getting
     # here means it succeeded. Just log the startup banner.
     log_info("\n" + "=" * 60)
-    log_info("🚀 Yukti Multi-Agent Server Starting...")
+    log_info("🚀 Yukti RAG Chat Server Starting...")
     log_info("=" * 60)
     log_info(f"📡 Server: http://{settings.host}:{settings.port}")
     log_info(f"📚 API Docs: http://{settings.host}:{settings.port}/docs")
     log_info(f"🤖 LLM Provider: {settings.llm_provider}")
-    log_info(f"   - Context Builder: {settings.context_builder_model}")
-    log_info(f"   - Intent Analyzer: {settings.analyzer_model}")
-    log_info(f"   - Suggestion: {settings.suggestion_model}")
+    log_info(f"   - Chat model: {settings.chat_model}")
+    log_info(f"📦 Pinecone: {settings.pinecone_index_name} ({settings.pinecone_embed_model})")
     log_info(f"🔧 Debug Mode: {settings.debug}")
     log_info("=" * 60 + "\n")
 
@@ -56,7 +55,7 @@ async def startup_event():
 async def shutdown_event():
     """Run on server shutdown"""
     log_info("\n" + "=" * 60)
-    log_info("👋 Yukti Multi-Agent Server Shutting Down...")
+    log_info("👋 Yukti RAG Chat Server Shutting Down...")
     log_info("=" * 60 + "\n")
 
 

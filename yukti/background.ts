@@ -41,9 +41,9 @@ interface InteractionsByTab {
 const MAX_INTERACTIONS_STORED = 10000 // Limit storage size
 const BATCH_SIZE = 30 // Send to server every N interactions
 const SERVER_URL = "http://localhost:8000" // Server endpoint
-const MIN_SEND_INTERVAL_MS = 15_000 // Don't fire /api/analyze more often than this
+const MIN_SEND_INTERVAL_MS = 15_000 // Don't fire /api/index more often than this
 
-// In-memory single-flight guards for /api/analyze. Single-threaded JS means
+// In-memory single-flight guards for /api/index. Single-threaded JS means
 // the synchronous reads-and-claims below are race-free even if many
 // recordInteraction callers are awaiting storage I/O concurrently.
 let isSendingBatch = false
@@ -227,42 +227,23 @@ async function checkAndSendBatch(totalInteractions: number, latestInteraction: U
   }
 }
 
-// Send interactions to server for AI analysis
+// Send interactions to the server for RAG indexing
 async function sendToServer(currentInteraction: UserInteraction) {
   try {
     const result = await chrome.storage.local.get(["interactions"])
     const interactions: UserInteraction[] = result.interactions || []
 
-    // Take last 50 interactions for analysis
+    // Take last 50 interactions for indexing
     const recentInteractions = interactions.slice(-50)
 
-    // Extract current page content
-    let pageContent = ""
-    try {
-      if (currentInteraction.tabId) {
-        const response = await chrome.tabs.sendMessage(currentInteraction.tabId, {
-          type: "GET_PAGE_CONTENT"
-        })
-        pageContent = response?.content || ""
-      }
-    } catch (error) {
-      console.warn("Could not extract page content:", error)
-    }
-
-    // Prepare request payload
     const payload = {
       interactions: recentInteractions,
       current_url: currentInteraction.url,
       tab_id: currentInteraction.tabId,
-      page_content: pageContent,
-      timestamp: Date.now()
     }
 
-    console.log(`📤 Yukti: Sending ${recentInteractions.length} interactions to server...`)
-    console.log(`📋 Yukti: Page content: ${pageContent.length} characters`)
-    console.log(`📋 Yukti: Payload:`, { ...payload, page_content: `${pageContent.substring(0, 100)}...` })
+    console.log(`📤 Yukti: Sending ${recentInteractions.length} interactions to /api/index...`)
 
-    // Call server API
     const response = await fetch(`${SERVER_URL}/api/index`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
