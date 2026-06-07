@@ -92,9 +92,18 @@ def validate_settings():
             f"Install with: pip install {spec.pkg}"
         ) from e
 
+    # Pinecone key required for RAG indexing/retrieval
+    if not settings.pinecone_api_key:
+        raise ValueError(
+            "PINECONE_API_KEY is not set. RAG indexing and chat retrieval "
+            "require a Pinecone API key. Set PINECONE_API_KEY in your .env "
+            "file. Get a key at https://app.pinecone.io"
+        )
+
     print(f"✅ Settings loaded successfully")
     print(f"   - Provider: {settings.llm_provider}")
     print(f"   - Chat model: {settings.chat_model}")
+    print(f"   - Pinecone index: {settings.pinecone_index_name} ({settings.pinecone_embed_model})")
     print(f"   - Server: {settings.host}:{settings.port}")
     print(f"   - Debug Mode: {settings.debug}")
 
