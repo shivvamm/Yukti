@@ -62,3 +62,4 @@ class ChatResponse(BaseModel):
     answer: str | None = None
     sources: list[ChatSource] = []
     error: str | None = None
+    retry_after: int | None = None

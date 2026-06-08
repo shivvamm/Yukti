@@ -57,6 +57,7 @@ function IndexPopup() {
   const [expandedTabs, setExpandedTabs] = useState<{ [tabId: string]: boolean }>({})
   const [expandedDates, setExpandedDates] = useState<{ [key: string]: boolean }>({})
   const [disabled, setDisabled] = useState<{ [key: string]: boolean }>({})
+  const [serverUrl, setServerUrl] = useState("")
 
   useEffect(() => {
     ensureFonts()
@@ -75,11 +76,12 @@ function IndexPopup() {
   }
 
   async function loadSettings() {
-    const keys = SETTINGS.map((s) => s.key)
+    const keys = [...SETTINGS.map((s) => s.key), "serverUrl"]
     const result = await chrome.storage.local.get(keys)
     const next: { [key: string]: boolean } = {}
-    keys.forEach((k) => (next[k] = result[k] || false))
+    SETTINGS.forEach((s) => (next[s.key] = result[s.key] || false))
     setDisabled(next)
+    setServerUrl(result.serverUrl || "http://localhost:8000")
   }
 
   async function loadStats() {
@@ -208,6 +210,24 @@ function IndexPopup() {
                 </div>
               ))}
             </div>
+
+            <h2 className="yk-p-h2" style={{ marginTop: 18 }}>Server</h2>
+            <p className="yk-p-sub">The URL of your Yukti backend server.</p>
+            <input
+              className="yk-p-input"
+              type="url"
+              value={serverUrl}
+              placeholder="http://localhost:8000"
+              onChange={(e) => setServerUrl(e.target.value)}
+              onBlur={() => {
+                const url = serverUrl.replace(/\/+$/, "")
+                setServerUrl(url)
+                chrome.storage.local.set({ serverUrl: url })
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+              }}
+            />
           </div>
         )}
 
@@ -431,6 +451,16 @@ const POPUP_CSS = `
 }
 .yk-toggle input:checked + .yk-slider { background: ${color.accentDeep}; }
 .yk-toggle input:checked + .yk-slider::before { transform: translateX(18px); background: ${color.onPrimary}; }
+
+/* Server URL input */
+.yk-p-input {
+  width: 100%; padding: 10px 12px; margin-top: 6px;
+  background: ${color.card}; border: 1px solid ${color.hairline}; border-radius: 10px;
+  color: ${color.ink}; font-family: ${font.mono}; font-size: 12.5px;
+  outline: none; transition: border-color 0.15s;
+}
+.yk-p-input:focus { border-color: ${color.accent}; }
+.yk-p-input::placeholder { color: ${color.muted}; }
 
 /* Data accordion */
 .yk-p-tablist { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }

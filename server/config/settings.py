@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # CORS Settings (comma-separated string)
     allowed_origins: str = "*"
 
+    # Daily usage caps (global across all users, resets at midnight UTC)
+    daily_chat_limit: int = 200
+    daily_index_limit: int = 1000
+
     # Batch Processing
     batch_size: int = 50
     analysis_threshold: int = 20

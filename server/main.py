@@ -1,10 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from api.routes import router
 from config.settings import settings
 from utils.helpers import log_info, log_error
 import uvicorn
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
 # Create FastAPI app
@@ -16,6 +21,8 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Configure CORS
 app.add_middleware(

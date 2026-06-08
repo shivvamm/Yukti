@@ -19,6 +19,7 @@ interface ChatReply {
   answer: string | null
   sources: ChatSource[]
   error: string | null
+  retry_after: number | null
 }
 
 const FloatingChatbot = () => {
@@ -120,19 +121,33 @@ const FloatingChatbot = () => {
           chat_history: history,
         },
       })
-      const botMsg: ChatMessage = reply.success && reply.answer
-        ? {
-            id: `a-${Date.now()}`,
-            role: "assistant",
-            content: reply.answer,
-            sources: reply.sources || [],
-          }
-        : {
-            id: `e-${Date.now()}`,
-            role: "assistant",
-            content: reply.error || "Sorry, I couldn't get an answer.",
-            isError: true,
-          }
+      let botMsg: ChatMessage
+      if (reply.success && reply.answer) {
+        botMsg = {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          content: reply.answer,
+          sources: reply.sources || [],
+        }
+      } else if (reply.retry_after) {
+        const secs = reply.retry_after
+        const wait =
+          secs < 60 ? `${secs} seconds`
+          : secs < 3600 ? `${Math.ceil(secs / 60)} minute${secs >= 120 ? "s" : ""}`
+          : `${Math.round(secs / 3600)} hour${secs >= 7200 ? "s" : ""}`
+        botMsg = {
+          id: `r-${Date.now()}`,
+          role: "assistant",
+          content: `I'm being rate-limited right now. Please try again in about ${wait}.`,
+        }
+      } else {
+        botMsg = {
+          id: `e-${Date.now()}`,
+          role: "assistant",
+          content: reply.error || "Sorry, I couldn't get an answer.",
+          isError: true,
+        }
+      }
       setMessages((m) => [...m, botMsg])
     } catch (e) {
       setMessages((m) => [

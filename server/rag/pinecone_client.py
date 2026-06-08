@@ -3,18 +3,37 @@
 We use Pinecone's hosted inference: upsert raw text + metadata, query by
 text. Pinecone embeds server-side via the model configured at
 index-creation time. No embedding round-trip lives in our code.
+
+Rate-limit handling: upserts retry with exponential backoff (tenacity).
+If all retries exhaust, the records are buffered in memory and drained
+on the next successful upsert call. Nothing surfaces to the user.
 """
 
+import logging
+import threading
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from pinecone import Pinecone
+from pinecone import Pinecone, RateLimitError
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    before_sleep_log,
+)
 
 from config.settings import settings
 from rag.formatter import FormattedRecord
 
+logger = logging.getLogger(__name__)
+
 _pinecone: Pinecone | None = None
 _index = None
+
+_pending_buffer: deque[list[dict]] = deque()
+_buffer_lock = threading.Lock()
 
 
 def _reset_for_tests() -> None:
@@ -54,6 +73,35 @@ def ensure_index() -> None:
     )
 
 
+@retry(
+    retry=retry_if_exception_type(RateLimitError),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=2, min=2, max=30),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _upsert_batch(payload: list[dict]) -> None:
+    _index_handle().upsert_records(
+        namespace=settings.pinecone_namespace,
+        records=payload,
+    )
+
+
+def _drain_buffer() -> int:
+    """Try to flush any previously buffered records. Returns count flushed."""
+    flushed = 0
+    with _buffer_lock:
+        while _pending_buffer:
+            batch = _pending_buffer[0]
+            try:
+                _upsert_batch(batch)
+                _pending_buffer.popleft()
+                flushed += len(batch)
+            except RateLimitError:
+                break
+    return flushed
+
+
 def upsert_texts(records: Iterable[FormattedRecord], user_id: str) -> dict[str, int]:
     """Upsert FormattedRecords to Pinecone, stamping each with user_id.
 
@@ -68,10 +116,18 @@ def upsert_texts(records: Iterable[FormattedRecord], user_id: str) -> dict[str, 
         {"_id": r.id, "values_text": r.values_text, "user_id": user_id, **r.metadata}
         for r in records_list
     ]
-    _index_handle().upsert_records(
-        namespace=settings.pinecone_namespace,
-        records=payload,
-    )
+
+    drained = _drain_buffer()
+    if drained:
+        logger.info(f"Pinecone: flushed {drained} buffered records")
+
+    try:
+        _upsert_batch(payload)
+    except RateLimitError:
+        with _buffer_lock:
+            _pending_buffer.append(payload)
+        logger.warning(f"Pinecone: rate-limited, buffered {len(payload)} records ({len(_pending_buffer)} batches pending)")
+
     return {"indexed": len(records_list)}
 
 

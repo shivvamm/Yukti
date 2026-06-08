@@ -40,7 +40,8 @@ interface InteractionsByTab {
 
 const MAX_INTERACTIONS_STORED = 10000 // Limit storage size
 const BATCH_SIZE = 30 // Send to server every N interactions
-const SERVER_URL = "http://localhost:8000" // Server endpoint
+const DEFAULT_SERVER_URL = "http://localhost:8000"
+let SERVER_URL = DEFAULT_SERVER_URL
 const MIN_SEND_INTERVAL_MS = 15_000 // Don't fire /api/index more often than this
 
 // In-memory single-flight guards for /api/index. Single-threaded JS means
@@ -49,10 +50,19 @@ const MIN_SEND_INTERVAL_MS = 15_000 // Don't fire /api/index more often than thi
 let isSendingBatch = false
 let lastSendAt = 0
 
+// Load server URL from storage on startup
+chrome.storage.local.get(["serverUrl"]).then((result) => {
+  if (result.serverUrl) SERVER_URL = result.serverUrl
+})
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.serverUrl?.newValue) SERVER_URL = changes.serverUrl.newValue
+})
+
 // Initialize default settings
 chrome.runtime.onInstalled.addListener(async () => {
   await chrome.storage.local.set({
     trackingEnabled: true, // Always on - tracking starts immediately
+    serverUrl: DEFAULT_SERVER_URL,
     // Opt-out settings: false = track, true = don't track
     disableClicks: false, // Track clicks by default
     disableScrolling: false, // Track scrolling by default
