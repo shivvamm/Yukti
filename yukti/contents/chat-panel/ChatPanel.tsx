@@ -11,8 +11,18 @@ interface Props {
 }
 
 export default function ChatPanel({ messages, isLoading, onSend, onClose }: Props) {
+  // Host pages like GitHub bind global keydown listeners (e.g. `/` opens search).
+  // Stop key events at the panel boundary so the host never sees keystrokes
+  // typed inside the chat. stopPropagation() is enough — we don't preventDefault,
+  // so our own inputs still receive the events normally.
+  const stopKey = (e: React.KeyboardEvent) => e.stopPropagation()
+
   return (
-    <div className="yk-panel">
+    <div
+      className="yk-panel"
+      onKeyDown={stopKey}
+      onKeyUp={stopKey}
+      onKeyPress={stopKey}>
       <header className="yk-header">
         <div className="yk-brand">
           <RobotIcon size={30} />

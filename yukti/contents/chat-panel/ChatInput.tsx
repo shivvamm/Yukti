@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 
 interface Props {
   disabled: boolean
@@ -8,6 +8,10 @@ interface Props {
 export default function ChatInput({ disabled, onSend }: Props) {
   const [text, setText] = useState("")
   const ref = useRef<HTMLTextAreaElement | null>(null)
+
+  useEffect(() => {
+    ref.current?.focus()
+  }, [])
 
   const submit = () => {
     const t = text.trim()
