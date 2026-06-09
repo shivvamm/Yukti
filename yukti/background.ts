@@ -40,7 +40,7 @@ interface InteractionsByTab {
 
 const MAX_INTERACTIONS_STORED = 10000 // Limit storage size
 const BATCH_SIZE = 30 // Send to server every N interactions
-const DEFAULT_SERVER_URL = "http://localhost:8000"
+const DEFAULT_SERVER_URL = "https://yukti.work.gd"
 let SERVER_URL = DEFAULT_SERVER_URL
 const MIN_SEND_INTERVAL_MS = 15_000 // Don't fire /api/index more often than this
 
