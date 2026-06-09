@@ -71,7 +71,7 @@ def _build_user_prompt(
 ) -> str:
     parts = []
     parts.append(f"[CURRENT PAGE: {current_url or 'none'}]")
-    parts.append((current_page_text or "(no page content)")[:3000])
+    parts.append(current_page_text or "(no page content)")
     parts.append("")
     parts.append("[YOUR BROWSING HISTORY — relevant interactions]")
     if retrieved:

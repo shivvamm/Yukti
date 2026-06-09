@@ -12,7 +12,6 @@ export const config: PlasmoCSConfig = {
 }
 
 const BUBBLE_SIZE = 60
-const PAGE_TEXT_LIMIT = 3000  // chars sent to /api/chat as current_page_text
 
 interface ChatReply {
   success: boolean
@@ -109,7 +108,7 @@ const FloatingChatbot = () => {
     setMessages((m) => [...m, userMsg])
     setIsLoading(true)
 
-    const pageText = extractPageText().slice(0, PAGE_TEXT_LIMIT)
+    const pageText = extractPageText()
 
     try {
       const reply: ChatReply = await chrome.runtime.sendMessage({
@@ -200,12 +199,20 @@ const FloatingChatbot = () => {
   )
 }
 
-/** Extract visible page text. Synchronous, content-script context. */
+/** Extract the full visible text of the page (chrome + content).
+ *
+ * We grab the whole <body> rather than <main> so navigation labels like
+ * "Repositories 95" on GitHub profiles are included. innerText on an
+ * attached node respects display:none / visibility:hidden, so hidden
+ * content (and <script>/<style>) is excluded automatically.
+ */
 function extractPageText(): string {
-  const main = document.querySelector("main")
-  const root = main ?? document.body
-  if (!root) return ""
-  return (root.innerText || "").replace(/\s+/g, " ").trim()
+  if (!document.body) return ""
+  const title = document.title ? `${document.title}\n\n` : ""
+  return (title + (document.body.innerText || ""))
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
 }
 
 export default FloatingChatbot
