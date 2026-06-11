@@ -58,13 +58,26 @@ function IndexPopup() {
   const [expandedDates, setExpandedDates] = useState<{ [key: string]: boolean }>({})
   const [disabled, setDisabled] = useState<{ [key: string]: boolean }>({})
   const [serverUrl, setServerUrl] = useState("")
+  const [indexingPaused, setIndexingPaused] = useState(false)
+  const [currentHost, setCurrentHost] = useState("")
+  const [disabledSites, setDisabledSites] = useState<string[]>([])
 
   useEffect(() => {
     ensureFonts()
     loadSettings()
     loadStats()
     loadInteractionsByTab()
+    loadCurrentHost()
   }, [])
+
+  async function loadCurrentHost() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (tab?.url) setCurrentHost(new URL(tab.url).hostname.replace(/^www\./, ""))
+    } catch {
+      // chrome:// page or no permission — leave blank.
+    }
+  }
 
   async function loadInteractionsByTab() {
     try {
@@ -76,12 +89,29 @@ function IndexPopup() {
   }
 
   async function loadSettings() {
-    const keys = [...SETTINGS.map((s) => s.key), "serverUrl"]
+    const keys = [...SETTINGS.map((s) => s.key), "serverUrl", "indexingPaused", "disabledSites"]
     const result = await chrome.storage.local.get(keys)
     const next: { [key: string]: boolean } = {}
     SETTINGS.forEach((s) => (next[s.key] = result[s.key] || false))
     setDisabled(next)
     setServerUrl(result.serverUrl || "http://localhost:8000")
+    setIndexingPaused(result.indexingPaused || false)
+    setDisabledSites(result.disabledSites || [])
+  }
+
+  async function toggleIndexingPaused(paused: boolean) {
+    setIndexingPaused(paused)
+    await chrome.storage.local.set({ indexingPaused: paused })
+  }
+
+  // Per-site enable/disable: maintain a list of hostnames Yukti ignores.
+  async function toggleSiteDisabled(disable: boolean) {
+    if (!currentHost) return
+    const next = disable
+      ? Array.from(new Set([...disabledSites, currentHost]))
+      : disabledSites.filter((h) => h !== currentHost)
+    setDisabledSites(next)
+    await chrome.storage.local.set({ disabledSites: next })
   }
 
   async function loadStats() {
@@ -126,10 +156,37 @@ function IndexPopup() {
   }
 
   async function deleteAllData() {
-    if (!confirm("Delete all collected data? This cannot be undone.")) return
+    if (
+      !confirm(
+        "Delete all collected data, locally and on the server? This cannot be undone.",
+      )
+    )
+      return
+
+    // 1) Best-effort server wipe — remove this user's vectors from Pinecone.
+    //    Requires the server's /api/forget endpoint (see server/api/routes.py).
+    try {
+      const { userId, serverUrl: url } = await chrome.storage.local.get([
+        "userId",
+        "serverUrl",
+      ])
+      if (userId && url) {
+        await fetch(`${url}/api/forget`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId }),
+        }).catch(() => {})
+      }
+    } catch {
+      // Server unreachable or endpoint not deployed yet — local wipe still proceeds.
+    }
+
+    // 2) Local wipe.
     await chrome.storage.local.set({
       interactions: [],
+      interactionsByTab: {},
       patterns: { frequentUrls: [], commonActions: [], avgTimeSpent: {}, scrollBehavior: {} },
+      batchCounter: 0,
     })
     loadStats()
     loadInteractionsByTab()
@@ -209,6 +266,46 @@ function IndexPopup() {
                   </label>
                 </div>
               ))}
+            </div>
+
+            <h2 className="yk-p-h2" style={{ marginTop: 18 }}>Indexing</h2>
+            <p className="yk-p-sub">Pause sending, or silence Yukti on specific sites.</p>
+            <div className="yk-p-settings">
+              <div className="yk-p-setting">
+                <div>
+                  <div className="yk-p-setting-label">Pause indexing</div>
+                  <div className="yk-p-setting-desc">
+                    Keep browsing private — stop sending interactions to the server.
+                  </div>
+                </div>
+                <label className="yk-toggle">
+                  <input
+                    type="checkbox"
+                    checked={indexingPaused}
+                    onChange={(e) => toggleIndexingPaused(e.target.checked)}
+                  />
+                  <span className="yk-slider" />
+                </label>
+              </div>
+              <div className="yk-p-setting">
+                <div>
+                  <div className="yk-p-setting-label">Disable on this site</div>
+                  <div className="yk-p-setting-desc">
+                    {currentHost
+                      ? `Turn Yukti off entirely on ${currentHost}.`
+                      : "Open a normal web page to toggle this."}
+                  </div>
+                </div>
+                <label className="yk-toggle">
+                  <input
+                    type="checkbox"
+                    disabled={!currentHost}
+                    checked={!!currentHost && disabledSites.includes(currentHost)}
+                    onChange={(e) => toggleSiteDisabled(e.target.checked)}
+                  />
+                  <span className="yk-slider" />
+                </label>
+              </div>
             </div>
 
             <h2 className="yk-p-h2" style={{ marginTop: 18 }}>Server</h2>

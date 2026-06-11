@@ -131,6 +131,24 @@ def upsert_texts(records: Iterable[FormattedRecord], user_id: str) -> dict[str, 
     return {"indexed": len(records_list)}
 
 
+def forget(user_id: str) -> dict[str, Any]:
+    """Delete every vector belonging to a user (right-to-be-forgotten).
+
+    Deletes by metadata filter on `user_id` within the shared namespace.
+
+    NOTE: metadata-filtered delete is supported on pod-based indexes. On
+    serverless indexes Pinecone does not support filtered delete; if this
+    index is serverless, the proper fix is a per-user namespace scheme
+    (namespace=user_id) so a whole-namespace delete can be used instead.
+    We surface any such error to the caller rather than failing silently.
+    """
+    _index_handle().delete(
+        filter={"user_id": {"$eq": user_id}},
+        namespace=settings.pinecone_namespace,
+    )
+    return {"deleted": True}
+
+
 @dataclass(frozen=True)
 class QueryHit:
     id: str

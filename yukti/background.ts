@@ -16,6 +16,16 @@ interface UserInteraction {
   scrollDepth?: number
   timeSpent?: number
   tabTitle?: string
+  incognito?: boolean
+}
+
+/** Hostname (sans leading www.) of a URL, or "" if unparseable. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return ""
+  }
 }
 
 interface UserPattern {
@@ -105,6 +115,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       interaction.tabId = sender.tab.id
       interaction.windowId = sender.tab.windowId
       interaction.tabTitle = sender.tab.title
+      interaction.incognito = sender.tab.incognito
     }
     recordInteraction(interaction)
     sendResponse({ success: true })
@@ -126,6 +137,9 @@ function getDateKey(timestamp: number): string {
 // Record user interaction
 async function recordInteraction(interaction: UserInteraction) {
   try {
+    // Privacy guard: never track incognito browsing.
+    if (interaction.incognito) return
+
     const result = await chrome.storage.local.get([
       "interactions",
       "interactionsByTab",
@@ -133,8 +147,16 @@ async function recordInteraction(interaction: UserInteraction) {
       "disableScrolling",
       "disableNavigation",
       "disableFormInteractions",
-      "disableInputValues"
+      "disableInputValues",
+      "disabledSites"
     ])
+
+    // Privacy guard: Yukti is turned off entirely on user-disabled sites.
+    const host = hostOf(interaction.url)
+    const disabledSites: string[] = result.disabledSites || []
+    if (host && disabledSites.includes(host)) {
+      return
+    }
 
     const settings = {
       disableClicks: result.disableClicks || false,
@@ -255,7 +277,14 @@ async function checkAndSendBatch(totalInteractions: number, latestInteraction: U
 // Send interactions to the server for RAG indexing
 async function sendToServer(currentInteraction: UserInteraction) {
   try {
-    const result = await chrome.storage.local.get(["interactions"])
+    const result = await chrome.storage.local.get(["interactions", "indexingPaused"])
+
+    // Pause indexing: keep tracking locally, but send nothing to the server.
+    if (result.indexingPaused) {
+      console.log("⏸️ Yukti: Indexing paused — not sending to server")
+      return
+    }
+
     const interactions: UserInteraction[] = result.interactions || []
 
     // Take last 50 interactions for indexing
@@ -422,7 +451,8 @@ chrome.tabs.onCreated.addListener((tab) => {
     url: tab.url || tab.pendingUrl || "about:blank",
     tabId: tab.id,
     windowId: tab.windowId,
-    tabTitle: tab.title
+    tabTitle: tab.title,
+    incognito: tab.incognito
   }
   recordInteraction(interaction)
   console.log(`📂 Yukti: Tab opened (ID: ${tab.id})`)
@@ -448,7 +478,8 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
       url: tab.url || "",
       tabId: tab.id,
       windowId: tab.windowId,
-      tabTitle: tab.title
+      tabTitle: tab.title,
+      incognito: tab.incognito
     }
     recordInteraction(interaction)
     console.log(`🔄 Yukti: Tab activated (ID: ${tab.id})`)
@@ -507,5 +538,68 @@ async function askChat(payload: AskChatPayload): Promise<ChatReply> {
     }
   }
 }
+
+// ── Entry points: keyboard shortcut, context menu, omnibox ──────────
+// All three just nudge the in-page chat panel (the content script) to open
+// and optionally ask a question, via a one-shot message to the active tab.
+
+function openChatInTab(tabId: number) {
+  chrome.tabs.sendMessage(tabId, { type: "YK_OPEN_CHAT" }).catch(() => {
+    // No content script (e.g. chrome:// page, web store) — nothing to open.
+  })
+}
+
+function askInTab(tabId: number, text: string) {
+  chrome.tabs.sendMessage(tabId, { type: "YK_ASK", text }).catch(() => {})
+}
+
+async function activeTabId(): Promise<number | undefined> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  return tab?.id
+}
+
+// Keyboard shortcut — Ctrl/Cmd+Shift+Y opens the panel on the active tab.
+chrome.commands?.onCommand.addListener(async (command) => {
+  if (command !== "open-chat") return
+  const id = await activeTabId()
+  if (id) openChatInTab(id)
+})
+
+// Right-click context menu. removeAll first so reloading the extension doesn't
+// throw "duplicate id".
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "yk-ask-page",
+      title: "Ask Yukti about this page",
+      contexts: ["page"],
+    })
+    chrome.contextMenus.create({
+      id: "yk-ask-selection",
+      title: 'Ask Yukti about "%s"',
+      contexts: ["selection"],
+    })
+  })
+})
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (!tab?.id) return
+  if (info.menuItemId === "yk-ask-selection" && info.selectionText) {
+    askInTab(tab.id, `Explain or answer about this: "${info.selectionText}"`)
+  } else if (info.menuItemId === "yk-ask-page") {
+    openChatInTab(tab.id)
+  }
+})
+
+// Omnibox — type "yk <question>" in the address bar, hit Enter.
+chrome.omnibox?.setDefaultSuggestion?.({
+  description: "Ask Yukti about the current page",
+})
+chrome.omnibox?.onInputEntered.addListener(async (text) => {
+  const q = text.trim()
+  if (!q) return
+  const id = await activeTabId()
+  if (id) askInTab(id, q)
+})
 
 console.log("Yukti: Background service worker initialized with tab tracking")

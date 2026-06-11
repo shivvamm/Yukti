@@ -41,6 +41,21 @@ SYSTEM_PROMPT = (
 )
 
 
+def _messages(
+    question: str,
+    current_url: str,
+    current_page_text: str,
+    chat_history: list[dict[str, str]],
+    retrieved: list[QueryHit],
+) -> list:
+    user_prompt = _build_user_prompt(question, current_url, current_page_text,
+                                     chat_history, retrieved)
+    return [
+        SystemMessage(content=SYSTEM_PROMPT),
+        HumanMessage(content=user_prompt),
+    ]
+
+
 def answer(
     *,
     question: str,
@@ -50,16 +65,31 @@ def answer(
     retrieved: list[QueryHit],
 ) -> ChatAnswer:
     """Run a chat turn. Returns the answer + sources for the UI."""
-    user_prompt = _build_user_prompt(question, current_url, current_page_text,
-                                     chat_history, retrieved)
     llm = get_llm("chat")
-    response = llm.invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=user_prompt),
-    ])
+    response = llm.invoke(
+        _messages(question, current_url, current_page_text, chat_history, retrieved)
+    )
     answer_text = response.content if isinstance(response.content, str) else str(response.content)
     sources = [_hit_to_source(h) for h in retrieved]
     return ChatAnswer(answer=answer_text, sources=sources)
+
+
+def answer_stream(
+    *,
+    question: str,
+    current_url: str,
+    current_page_text: str,
+    chat_history: list[dict[str, str]],
+    retrieved: list[QueryHit],
+):
+    """Stream a chat turn token-by-token. Yields text chunks as they arrive."""
+    llm = get_llm("chat")
+    for chunk in llm.stream(
+        _messages(question, current_url, current_page_text, chat_history, retrieved)
+    ):
+        content = chunk.content
+        if content:
+            yield content if isinstance(content, str) else str(content)
 
 
 def _build_user_prompt(
@@ -70,6 +100,10 @@ def _build_user_prompt(
     retrieved: list[QueryHit],
 ) -> str:
     parts = []
+    # Anchor relative-date reasoning ("yesterday", "last week"). The client also
+    # injects local time into the page text; this is the server-side backstop.
+    now = datetime.now(timezone.utc).strftime("%a %b %-d %Y, %H:%M UTC")
+    parts.append(f"[CURRENT TIME: {now}]")
     parts.append(f"[CURRENT PAGE: {current_url or 'none'}]")
     parts.append(current_page_text or "(no page content)")
     parts.append("")

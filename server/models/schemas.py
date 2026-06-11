@@ -63,3 +63,15 @@ class ChatResponse(BaseModel):
     sources: list[ChatSource] = []
     error: str | None = None
     retry_after: int | None = None
+
+
+# ── /api/forget ─────────────────────────────────────────────────────────
+
+
+class ForgetRequest(BaseModel):
+    user_id: str = Field(..., description="Per-install UUID whose vectors to delete.")
+
+
+class ForgetResponse(BaseModel):
+    success: bool
+    error: str | None = None

@@ -95,6 +95,41 @@ export const PANEL_CSS = `
 }
 .yk-close:hover { background: ${color.elevated}; color: ${color.ink}; border-color: ${color.hairline}; }
 
+/* header quick actions (Summarize / New) */
+.yk-action {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: ${radius.md}px;
+  border: 1px solid ${color.hairline};
+  background: ${color.elevated};
+  color: ${color.body};
+  font-family: ${font.sans};
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.yk-action:hover:not(:disabled) { color: ${color.ink}; border-color: ${color.primaryDeep}; }
+.yk-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* per-message actions (Copy / Regenerate) */
+.yk-msg-actions { display: flex; gap: 6px; margin-top: 9px; }
+.yk-msg-action {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: ${font.sans};
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: ${color.muted};
+  transition: color 0.15s;
+}
+.yk-msg-action:hover { color: ${color.accent}; }
+
 /* ── Message list ────────────────────────────────────────────── */
 .yk-list {
   flex: 1;

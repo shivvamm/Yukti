@@ -7,17 +7,18 @@ interface Props {
   messages: ChatMessage[]
   isLoading: boolean
   onPrompt: (text: string) => void
+  onRegenerate: () => void
 }
 
 // Example prompts surfaced in the empty state — one taps the live-page
 // path, the others tap RAG history.
 const STARTER_PROMPTS = [
-  "What's on this page?",
+  "Summarize this page",
   "What was I reading earlier today?",
   "Find that article I looked at recently",
 ]
 
-export default function MessageList({ messages, isLoading, onPrompt }: Props) {
+export default function MessageList({ messages, isLoading, onPrompt, onRegenerate }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -51,10 +52,20 @@ export default function MessageList({ messages, isLoading, onPrompt }: Props) {
     )
   }
 
+  // The last assistant (non-error) message can be regenerated.
+  const lastAssistantId = [...conversation]
+    .reverse()
+    .find((m) => m.role === "assistant" && !m.isError)?.id
+
   return (
     <div className="yk-list">
       {conversation.map((m) => (
-        <MessageBubble key={m.id} message={m} />
+        <MessageBubble
+          key={m.id}
+          message={m}
+          canRegenerate={!isLoading && m.id === lastAssistantId}
+          onRegenerate={onRegenerate}
+        />
       ))}
       {isLoading && (
         <div className="yk-think">

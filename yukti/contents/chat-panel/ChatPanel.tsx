@@ -7,10 +7,21 @@ interface Props {
   messages: ChatMessage[]
   isLoading: boolean
   onSend: (text: string) => void
+  onRegenerate: () => void
+  onClear: () => void
+  onSummarize: () => void
   onClose: () => void
 }
 
-export default function ChatPanel({ messages, isLoading, onSend, onClose }: Props) {
+export default function ChatPanel({
+  messages,
+  isLoading,
+  onSend,
+  onRegenerate,
+  onClear,
+  onSummarize,
+  onClose,
+}: Props) {
   // Host pages like GitHub bind global keydown listeners (e.g. `/` opens search).
   // Stop key events at the panel boundary so the host never sees keystrokes
   // typed inside the chat. stopPropagation() is enough — we don't preventDefault,
@@ -28,18 +39,35 @@ export default function ChatPanel({ messages, isLoading, onSend, onClose }: Prop
           <RobotIcon size={30} />
           <span className="yk-wordmark">Yukti</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, position: "relative" }}>
-          <span className="yk-status">
-            <span className="yk-dot" />
-            online
-          </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+          <button
+            className="yk-action"
+            onClick={onSummarize}
+            disabled={isLoading}
+            title="Summarize this page"
+            aria-label="Summarize this page">
+            Summarize
+          </button>
+          <button
+            className="yk-action"
+            onClick={onClear}
+            disabled={isLoading}
+            title="New conversation"
+            aria-label="New conversation">
+            New
+          </button>
           <button className="yk-close" onClick={onClose} aria-label="Close chat">
             ✕
           </button>
         </div>
       </header>
 
-      <MessageList messages={messages} isLoading={isLoading} onPrompt={onSend} />
+      <MessageList
+        messages={messages}
+        isLoading={isLoading}
+        onPrompt={onSend}
+        onRegenerate={onRegenerate}
+      />
       <ChatInput disabled={isLoading} onSend={onSend} />
     </div>
   )

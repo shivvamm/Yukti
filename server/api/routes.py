@@ -6,12 +6,14 @@
 """
 
 from datetime import datetime, timezone
+import json
 import math
 import re
 import threading
 import time
 
 from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -20,6 +22,7 @@ from models.schemas import (
     HealthResponse,
     IndexRequest, IndexResponse,
     ChatRequest, ChatResponse, ChatSource,
+    ForgetRequest, ForgetResponse,
 )
 from rag import chat as chat_module
 from rag import pinecone_client
@@ -27,6 +30,11 @@ from rag.formatter import format as format_interaction
 from utils.helpers import RequestLogger, log_info
 
 _DEFAULT_RETRY_SECONDS = 60
+
+
+def _sse(obj: dict) -> str:
+    """Encode a dict as a Server-Sent Events `data:` line."""
+    return f"data: {json.dumps(obj)}\n\n"
 
 
 # ── Global daily budget ─────────────────────────────────────────────
@@ -267,6 +275,74 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
 
         RequestLogger.log_response("/api/chat", 502, elapsed_ms)
         return ChatResponse(success=False, answer=None, sources=[], error=str(e))
+
+
+@router.post("/api/chat/stream")
+@limiter.limit("10/minute")
+async def chat_stream(request: Request, body: ChatRequest):
+    """Stream a chat answer token-by-token as Server-Sent Events.
+
+    Emits `data: <json>` lines:
+      {"delta": "..."}        incremental text
+      {"sources": [...]}      retrieved sources (sent once, up front)
+      {"done": true}          end of stream
+      {"error": "..."}        terminal error / rate-limit (with retry_after)
+    """
+    if not _budget.try_chat():
+        secs = _seconds_until_midnight_utc()
+
+        async def limited():
+            yield _sse({"error": "rate_limit", "retry_after": secs})
+
+        return StreamingResponse(limited(), media_type="text/event-stream")
+
+    try:
+        retrieved = pinecone_client.query(text=body.question, user_id=body.user_id, top_k=8)
+    except Exception as e:
+        log_info(f"   ⚠️  Pinecone query failed: {e}")
+        retrieved = []
+
+    sources = [
+        {"url": h.metadata.get("url", "") or "",
+         "timestamp": int(h.metadata.get("timestamp", 0) or 0),
+         "snippet": (h.values_text[:80] + ("..." if len(h.values_text) > 80 else ""))}
+        for h in retrieved
+    ]
+
+    def event_stream():
+        yield _sse({"sources": sources})
+        try:
+            for delta in chat_module.answer_stream(
+                question=body.question,
+                current_url=body.current_url,
+                current_page_text=body.current_page_text,
+                chat_history=[t.model_dump() for t in body.chat_history],
+                retrieved=retrieved,
+            ):
+                yield _sse({"delta": delta})
+            yield _sse({"done": True})
+        except Exception as e:  # noqa: BLE001
+            RequestLogger.log_error("/api/chat/stream", e)
+            if _is_rate_limit_error(e):
+                retry = _extract_retry_seconds(e) or _DEFAULT_RETRY_SECONDS
+                yield _sse({"error": "rate_limit", "retry_after": retry})
+            else:
+                yield _sse({"error": str(e)})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/api/forget", response_model=ForgetResponse)
+@limiter.limit("5/minute")
+async def forget(request: Request, body: ForgetRequest) -> ForgetResponse:
+    """Delete all of a user's vectors from Pinecone (right-to-be-forgotten)."""
+    try:
+        RequestLogger.log_request("/api/forget", "POST", {"user_id": body.user_id[:8]})
+        pinecone_client.forget(body.user_id)
+        return ForgetResponse(success=True)
+    except Exception as e:  # noqa: BLE001
+        RequestLogger.log_error("/api/forget", e)
+        return ForgetResponse(success=False, error=str(e))
 
 
 @router.get("/")

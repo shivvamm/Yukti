@@ -32,7 +32,20 @@
     "permissions": [
       "storage",
       "tabs",
-      "activeTab"
-    ]
+      "activeTab",
+      "contextMenus"
+    ],
+    "omnibox": {
+      "keyword": "yk"
+    },
+    "commands": {
+      "open-chat": {
+        "suggested_key": {
+          "default": "Ctrl+Shift+Y",
+          "mac": "Command+Shift+Y"
+        },
+        "description": "Open the Yukti chat panel"
+      }
+    }
   }
 }
