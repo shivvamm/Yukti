@@ -38,6 +38,65 @@ interface ChatReply {
   retry_after: number | null
 }
 
+interface StreamHandlers {
+  onSources: (s: ChatSource[]) => void
+  onDelta: (text: string) => void
+}
+
+// Try to stream the answer from /api/chat/stream. Returns the final assistant
+// text on success, or null if streaming is unavailable (caller falls back).
+async function streamChat(
+  payload: { question: string; current_url: string; current_page_text: string; chat_history: { role: string; content: string }[] },
+  handlers: StreamHandlers,
+): Promise<{ text: string } | { retryAfter: number } | null> {
+  let serverUrl = ""
+  let userId = ""
+  try {
+    const s = await chrome.storage.local.get(["serverUrl", "userId"])
+    serverUrl = s.serverUrl || ""
+    userId = s.userId || ""
+  } catch {
+    return null
+  }
+  if (!serverUrl || !userId) return null
+
+  let resp: Response
+  try {
+    resp = await fetch(`${serverUrl}/api/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, ...payload }),
+    })
+  } catch {
+    return null // network/CORS → fall back
+  }
+  if (!resp.ok || !resp.body) return null // e.g. 404 (endpoint not deployed)
+
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let full = ""
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const frames = buffer.split("\n\n")
+    buffer = frames.pop() || ""
+    for (const frame of frames) {
+      const line = frame.trim()
+      if (!line.startsWith("data:")) continue
+      let evt: any
+      try { evt = JSON.parse(line.slice(5).trim()) } catch { continue }
+      if (evt.sources) handlers.onSources(evt.sources as ChatSource[])
+      if (evt.delta) { full += evt.delta; handlers.onDelta(evt.delta) }
+      if (evt.error === "rate_limit") return { retryAfter: evt.retry_after || 60 }
+      if (evt.error) return null
+      if (evt.done) return { text: full }
+    }
+  }
+  return { text: full }
+}
+
 const FloatingChatbot = () => {
   const [position, setPosition] = useState({
     x: typeof window !== "undefined" ? window.innerWidth - BUBBLE_SIZE - 16 : 0,
@@ -229,6 +288,69 @@ const FloatingChatbot = () => {
     const history = historyFrom(messages)
     setMessages((m) => [...m, userMsg])
     setIsLoading(true)
+
+    // Build the same augmented page text used by the one-shot path.
+    const selection = getSelectionText()
+    let pageText = await extractPageText()
+    const nowLine = `[CURRENT LOCAL TIME] ${new Date().toString()}`
+    const selBlock = selection
+      ? `[SELECTED TEXT — the user is likely asking about this]\n${selection}\n\n`
+      : ""
+    pageText = `${nowLine}\n\n${selBlock}${pageText}`
+
+    const payload = {
+      question: text,
+      current_url: window.location.href,
+      current_page_text: pageText,
+      chat_history: history,
+    }
+
+    // Placeholder assistant bubble we stream into.
+    const streamId = uid("a")
+    let appended = false
+    const ensureBubble = () => {
+      if (appended) return
+      appended = true
+      setMessages((m) => [...m, { id: streamId, role: "assistant", content: "", sources: [] }])
+    }
+
+    const result = await streamChat(payload, {
+      onSources: (s) => {
+        ensureBubble()
+        setMessages((m) => m.map((x) => (x.id === streamId ? { ...x, sources: s } : x)))
+      },
+      onDelta: (d) => {
+        ensureBubble()
+        setMessages((m) =>
+          m.map((x) => (x.id === streamId ? { ...x, content: x.content + d } : x)),
+        )
+      },
+    })
+
+    if (result && "text" in result) {
+      // Streaming succeeded — ensure final text is set (covers no-delta edge).
+      ensureBubble()
+      setMessages((m) =>
+        m.map((x) => (x.id === streamId ? { ...x, content: result.text } : x)),
+      )
+      setIsLoading(false)
+      return
+    }
+    if (result && "retryAfter" in result) {
+      const secs = result.retryAfter
+      const wait =
+        secs < 60 ? `${secs} seconds`
+        : secs < 3600 ? `${Math.ceil(secs / 60)} minute${secs >= 120 ? "s" : ""}`
+        : `${Math.round(secs / 3600)} hour${secs >= 7200 ? "s" : ""}`
+      setMessages((m) => [...m, {
+        id: uid("r"), role: "assistant",
+        content: `I'm being rate-limited right now. Please try again in about ${wait}.`,
+      }])
+      setIsLoading(false)
+      return
+    }
+
+    // Streaming unavailable → one-shot fallback (reuses existing callChat).
     const bot = await callChat(text, history)
     setMessages((m) => [...m, bot])
     setIsLoading(false)

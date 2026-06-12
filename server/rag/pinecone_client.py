@@ -149,6 +149,14 @@ def forget(user_id: str) -> dict[str, Any]:
     return {"deleted": True}
 
 
+def delete_ids(ids: list[str]) -> dict[str, Any]:
+    """Delete specific vectors by id. Delete-by-id is serverless-safe."""
+    if not ids:
+        return {"deleted": 0}
+    _index_handle().delete(ids=ids, namespace=settings.pinecone_namespace)
+    return {"deleted": len(ids)}
+
+
 @dataclass(frozen=True)
 class QueryHit:
     id: str
@@ -157,17 +165,26 @@ class QueryHit:
     metadata: dict[str, Any]
 
 
-def query(text: str, user_id: str, top_k: int = 8) -> list[QueryHit]:
-    """Query Pinecone by text, scoped to the given user_id via metadata filter.
+def query(
+    text: str,
+    user_id: str,
+    top_k: int = 8,
+    time_range: tuple[int, int] | None = None,
+) -> list[QueryHit]:
+    """Query Pinecone by text, scoped to user_id, optionally within a time range.
 
     The user_id filter is mandatory — without it, the result set would
     include other users' vectors that share the same namespace.
     """
+    metadata_filter: dict[str, Any] = {"user_id": {"$eq": user_id}}
+    if time_range is not None:
+        lo, hi = time_range
+        metadata_filter["timestamp"] = {"$gte": lo, "$lte": hi}
     response = _index_handle().search(
         namespace=settings.pinecone_namespace,
         inputs={"text": text},
         top_k=top_k,
-        filter={"user_id": {"$eq": user_id}},
+        filter=metadata_filter,
         fields=["values_text", "user_id", "url", "tab_title", "timestamp", "type",
                 "element_text", "element_type", "input_name", "input_value"],
     )

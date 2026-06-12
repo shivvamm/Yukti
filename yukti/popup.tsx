@@ -61,14 +61,28 @@ function IndexPopup() {
   const [indexingPaused, setIndexingPaused] = useState(false)
   const [currentHost, setCurrentHost] = useState("")
   const [disabledSites, setDisabledSites] = useState<string[]>([])
+  const [trackingEnabled, setTrackingEnabled] = useState(false)
+  const [memQuery, setMemQuery] = useState("")
+  const [memRange, setMemRange] = useState<"today" | "7d" | "30d" | "all">("7d")
+  const [allInteractions, setAllInteractions] = useState<UserInteraction[]>([])
 
   useEffect(() => {
     ensureFonts()
     loadSettings()
     loadStats()
     loadInteractionsByTab()
+    loadInteractions()
     loadCurrentHost()
   }, [])
+
+  async function loadInteractions() {
+    try {
+      const r = await chrome.storage.local.get(["interactions"])
+      setAllInteractions(r.interactions || [])
+    } catch (e) {
+      console.error("Failed to load interactions:", e)
+    }
+  }
 
   async function loadCurrentHost() {
     try {
@@ -89,7 +103,7 @@ function IndexPopup() {
   }
 
   async function loadSettings() {
-    const keys = [...SETTINGS.map((s) => s.key), "serverUrl", "indexingPaused", "disabledSites"]
+    const keys = [...SETTINGS.map((s) => s.key), "serverUrl", "indexingPaused", "disabledSites", "trackingEnabled"]
     const result = await chrome.storage.local.get(keys)
     const next: { [key: string]: boolean } = {}
     SETTINGS.forEach((s) => (next[s.key] = result[s.key] || false))
@@ -97,11 +111,17 @@ function IndexPopup() {
     setServerUrl(result.serverUrl || "http://localhost:8000")
     setIndexingPaused(result.indexingPaused || false)
     setDisabledSites(result.disabledSites || [])
+    setTrackingEnabled(result.trackingEnabled || false)
   }
 
   async function toggleIndexingPaused(paused: boolean) {
     setIndexingPaused(paused)
     await chrome.storage.local.set({ indexingPaused: paused })
+  }
+
+  async function toggleTracking(on: boolean) {
+    setTrackingEnabled(on)
+    await chrome.storage.local.set({ trackingEnabled: on })
   }
 
   // Per-site enable/disable: maintain a list of hostnames Yukti ignores.
@@ -192,6 +212,56 @@ function IndexPopup() {
     loadInteractionsByTab()
   }
 
+  const RANGE_MS: Record<typeof memRange, number> = {
+    today: 24 * 3600_000, "7d": 7 * 24 * 3600_000, "30d": 30 * 24 * 3600_000,
+    all: Number.MAX_SAFE_INTEGER,
+  }
+  const filteredMemory = allInteractions
+    .filter((it) => Date.now() - it.timestamp <= RANGE_MS[memRange])
+    .filter((it) => {
+      if (!memQuery.trim()) return true
+      const q = memQuery.toLowerCase()
+      return [it.url, it.elementText, it.elementType, it.type]
+        .some((f) => (f || "").toLowerCase().includes(q))
+    })
+    .slice(-300)
+    .reverse()
+
+  async function deleteMemory(target: UserInteraction) {
+    const match = (a: UserInteraction) =>
+      a.timestamp === target.timestamp && a.url === target.url && a.type === target.type
+
+    const store = await chrome.storage.local.get([
+      "interactions", "interactionsByTab", "userId", "serverUrl",
+    ])
+
+    // Local: flat array.
+    const interactions: UserInteraction[] = (store.interactions || []).filter(
+      (a: UserInteraction) => !match(a),
+    )
+
+    // Local: hierarchical structure.
+    const byTab: InteractionsByTab = store.interactionsByTab || {}
+    for (const tab of Object.values(byTab)) {
+      for (const dateKey of Object.keys(tab.dates)) {
+        tab.dates[dateKey] = tab.dates[dateKey].filter((a) => !match(a))
+      }
+    }
+
+    await chrome.storage.local.set({ interactions, interactionsByTab: byTab })
+    setAllInteractions(interactions)
+    setInteractionsByTab(byTab)
+
+    // Server: best-effort vector delete (no-op if endpoint not deployed).
+    if (store.userId && store.serverUrl) {
+      fetch(`${store.serverUrl}/api/forget-item`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: store.userId, interaction: target }),
+      }).catch(() => {})
+    }
+  }
+
   return (
     <div className="yk-pop">
       <style>{POPUP_CSS}</style>
@@ -249,6 +319,24 @@ function IndexPopup() {
           <div className="yk-p-fade">
             <h2 className="yk-p-h2">Privacy</h2>
             <p className="yk-p-sub">Turn off anything you'd rather Yukti not track.</p>
+            <div className="yk-p-settings" style={{ marginBottom: 8 }}>
+              <div className="yk-p-setting">
+                <div>
+                  <div className="yk-p-setting-label">Tracking</div>
+                  <div className="yk-p-setting-desc">
+                    Master switch — turn all memory collection on or off.
+                  </div>
+                </div>
+                <label className="yk-toggle">
+                  <input
+                    type="checkbox"
+                    checked={trackingEnabled}
+                    onChange={(e) => toggleTracking(e.target.checked)}
+                  />
+                  <span className="yk-slider" />
+                </label>
+              </div>
+            </div>
             <div className="yk-p-settings">
               {SETTINGS.map((s) => (
                 <div key={s.key} className="yk-p-setting">
@@ -338,55 +426,53 @@ function IndexPopup() {
               </p>
             )}
 
-            <div className="yk-p-tablist">
-              {Object.keys(interactionsByTab).length === 0 ? (
-                <p className="yk-p-empty">Nothing yet — start browsing to build your history.</p>
-              ) : (
-                Object.entries(interactionsByTab).map(([tabId, tabData]) => {
-                  let hostname = tabData.url
-                  try {
-                    hostname = new URL(tabData.url).hostname.replace(/^www\./, "")
-                  } catch {}
-                  return (
-                    <div key={tabId} className="yk-p-card">
-                      <button className="yk-p-card-head" onClick={(e) => toggleTab(tabId, e)}>
-                        <span className="yk-p-caret">{expandedTabs[tabId] ? "▾" : "▸"}</span>
-                        <div className="yk-p-card-info">
-                          <div className="yk-p-card-title">{tabData.tabTitle || hostname}</div>
-                          <div className="yk-p-card-url">{hostname}</div>
-                        </div>
-                      </button>
+            <div className="yk-p-memctl">
+              <input
+                className="yk-p-input"
+                type="text"
+                placeholder="Search your memory…"
+                value={memQuery}
+                onChange={(e) => setMemQuery(e.target.value)}
+              />
+              <div className="yk-p-ranges">
+                {(["today", "7d", "30d", "all"] as const).map((r) => (
+                  <button
+                    key={r}
+                    className={`yk-p-range ${memRange === r ? "is-active" : ""}`}
+                    onClick={() => setMemRange(r)}>
+                    {r === "today" ? "Today" : r === "all" ? "All" : r}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                      {expandedTabs[tabId] && (
-                        <div className="yk-p-dates">
-                          {Object.entries(tabData.dates).map(([dateKey, interactions]) => (
-                            <div key={dateKey} className="yk-p-date">
-                              <button
-                                className="yk-p-date-head"
-                                onClick={(e) => toggleDate(tabId, dateKey, e)}>
-                                <span className="yk-p-caret">
-                                  {expandedDates[`${tabId}-${dateKey}`] ? "▾" : "▸"}
-                                </span>
-                                <span className="yk-p-date-text">{dateKey}</span>
-                                <span className="yk-p-count">{interactions.length}</span>
-                              </button>
-                              {expandedDates[`${tabId}-${dateKey}`] && (
-                                <div className="yk-p-events">
-                                  {interactions.map((it, index) => (
-                                    <div key={index} className="yk-p-event">
-                                      <span className="yk-p-event-time">{formatTime(it.timestamp)}</span>
-                                      <span className="yk-p-event-type">{it.type}</span>
-                                      {it.elementType && (
-                                        <span className="yk-p-event-detail">{it.elementType}</span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+            <div className="yk-p-memlist">
+              {filteredMemory.length === 0 ? (
+                <p className="yk-p-empty">Nothing matches — try a wider range.</p>
+              ) : (
+                filteredMemory.map((it, i) => {
+                  let host = it.url
+                  try { host = new URL(it.url).hostname.replace(/^www\./, "") } catch {}
+                  return (
+                    <div key={`${it.timestamp}-${i}`} className="yk-p-memitem">
+                      <div className="yk-p-memmain">
+                        <span className="yk-p-memtype">{it.type}</span>
+                        <span className="yk-p-memhost">{host}</span>
+                        {it.elementText && (
+                          <span className="yk-p-memtext">“{it.elementText}”</span>
+                        )}
+                      </div>
+                      <div className="yk-p-memmeta">
+                        <span className="yk-p-memtime">
+                          {new Date(it.timestamp).toLocaleString()}
+                        </span>
+                        <button
+                          className="yk-p-memdel"
+                          title="Delete this memory"
+                          onClick={() => deleteMemory(it)}>
+                          ×
+                        </button>
+                      </div>
                     </div>
                   )
                 })
@@ -607,6 +693,27 @@ const POPUP_CSS = `
   display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 16px;
   border-top: 1px solid ${color.hairlineSoft}; font-size: 12px; color: ${color.muted};
 }
+
+/* Memory browser */
+.yk-p-memctl { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.yk-p-ranges { display: flex; gap: 6px; }
+.yk-p-range { flex: 1; padding: 7px 4px; border-radius: 8px; cursor: pointer;
+  background: ${color.card}; border: 1px solid ${color.hairline}; color: ${color.muted};
+  font-family: ${font.sans}; font-size: 12px; font-weight: 600; transition: color .15s, border-color .15s; }
+.yk-p-range.is-active { color: ${color.ink}; border-color: ${color.primaryDeep}; }
+.yk-p-memlist { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.yk-p-memitem { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: ${color.card}; border: 1px solid ${color.hairline}; border-radius: 10px; padding: 10px 12px; }
+.yk-p-memmain { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.yk-p-memtype { font-size: 10.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; color: ${color.primary}; }
+.yk-p-memhost { font-size: 12.5px; color: ${color.ink}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yk-p-memtext { font-size: 11.5px; color: ${color.muted}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yk-p-memmeta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.yk-p-memtime { font-size: 10.5px; color: ${color.mutedSoft}; font-family: ${font.mono}; }
+.yk-p-memdel { width: 24px; height: 24px; border-radius: 6px; border: 1px solid ${color.hairline};
+  background: transparent; color: ${color.muted}; cursor: pointer; font-size: 15px; line-height: 1;
+  transition: background .15s, color .15s, border-color .15s; }
+.yk-p-memdel:hover { background: ${color.errorSurface}; color: ${color.error}; border-color: ${color.errorBorder}; }
 `
 
 export default IndexPopup

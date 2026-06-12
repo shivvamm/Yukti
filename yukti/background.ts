@@ -60,6 +60,28 @@ const MIN_SEND_INTERVAL_MS = 15_000 // Don't fire /api/index more often than thi
 let isSendingBatch = false
 let lastSendAt = 0
 
+// Near-duplicate suppression: skip indexing the same (url|type|text) more than
+// once within this window. Exact dupes already collapse via deterministic ids;
+// this also saves the network + embedding cost of near-repeats.
+const DEDUP_WINDOW_MS = 5 * 60_000
+const _recentKeys = new Map<string, number>()
+
+function isNearDuplicate(it: UserInteraction): boolean {
+  // Only dedup content interactions; lifecycle/time events are always kept.
+  if (!["click", "navigation", "input_value", "form_interaction"].includes(it.type)) {
+    return false
+  }
+  const key = `${it.url}|${it.type}|${it.elementText || ""}`
+  const now = Date.now()
+  const last = _recentKeys.get(key)
+  // Prune opportunistically to bound memory.
+  if (_recentKeys.size > 500) {
+    for (const [k, t] of _recentKeys) if (now - t > DEDUP_WINDOW_MS) _recentKeys.delete(k)
+  }
+  _recentKeys.set(key, now)
+  return last !== undefined && now - last < DEDUP_WINDOW_MS
+}
+
 // Load server URL from storage on startup
 chrome.storage.local.get(["serverUrl"]).then((result) => {
   if (result.serverUrl) SERVER_URL = result.serverUrl
@@ -69,9 +91,10 @@ chrome.storage.onChanged.addListener((changes) => {
 })
 
 // Initialize default settings
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (details) => {
   await chrome.storage.local.set({
-    trackingEnabled: true, // Always on - tracking starts immediately
+    trackingEnabled: false, // Consent-first: nothing tracked until the user accepts
+    onboarded: false,       // Set true once the onboarding page is completed
     serverUrl: DEFAULT_SERVER_URL,
     // Opt-out settings: false = track, true = don't track
     disableClicks: false, // Track clicks by default
@@ -92,7 +115,10 @@ chrome.runtime.onInstalled.addListener(async () => {
   // Generate a stable user ID for this install — scopes Pinecone queries
   // to only this user's vectors via a metadata filter on the server side.
   await getOrCreateUserId()
-  console.log("Yukti: Extension installed, tracking everything automatically")
+  if (details.reason === "install") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("tabs/onboarding.html") })
+  }
+  console.log("Yukti: Extension installed")
 })
 
 // Stable per-install user ID. Generated lazily so existing installs (which
@@ -143,6 +169,7 @@ async function recordInteraction(interaction: UserInteraction) {
     const result = await chrome.storage.local.get([
       "interactions",
       "interactionsByTab",
+      "trackingEnabled",
       "disableClicks",
       "disableScrolling",
       "disableNavigation",
@@ -150,6 +177,14 @@ async function recordInteraction(interaction: UserInteraction) {
       "disableInputValues",
       "disabledSites"
     ])
+
+    // Master gate: consent-first — record nothing until tracking is enabled.
+    if (!result.trackingEnabled) return
+
+    // Near-duplicate suppression (after the master gate, before storing).
+    if (isNearDuplicate(interaction)) {
+      return
+    }
 
     // Privacy guard: Yukti is turned off entirely on user-disabled sites.
     const host = hostOf(interaction.url)

@@ -75,3 +75,8 @@ class ForgetRequest(BaseModel):
 class ForgetResponse(BaseModel):
     success: bool
     error: str | None = None
+
+
+class ForgetItemRequest(BaseModel):
+    user_id: str = Field(..., description="Per-install UUID that owns the vector.")
+    interaction: dict[str, Any] = Field(..., description="Raw interaction to delete.")

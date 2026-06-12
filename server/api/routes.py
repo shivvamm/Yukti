@@ -22,7 +22,7 @@ from models.schemas import (
     HealthResponse,
     IndexRequest, IndexResponse,
     ChatRequest, ChatResponse, ChatSource,
-    ForgetRequest, ForgetResponse,
+    ForgetRequest, ForgetResponse, ForgetItemRequest,
 )
 from rag import chat as chat_module
 from rag import pinecone_client
@@ -91,6 +91,23 @@ def _seconds_until_midnight_utc() -> int:
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     midnight += __import__("datetime").timedelta(days=1)
     return int((midnight - now).total_seconds())
+
+
+def _coarse_time_range(question: str) -> tuple[int, int] | None:
+    """Map obvious timeframe words to a [start, now] ms range. Conservative —
+    returns None when the question has no clear timeframe."""
+    q = question.lower()
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    day = 86_400_000
+    if "today" in q:
+        return (now_ms - day, now_ms)
+    if "yesterday" in q:
+        return (now_ms - 2 * day, now_ms)
+    if "last week" in q or "past week" in q or "this week" in q:
+        return (now_ms - 7 * day, now_ms)
+    if "last month" in q or "past month" in q:
+        return (now_ms - 30 * day, now_ms)
+    return None
 
 
 def _extract_retry_seconds(exc: Exception) -> int | None:
@@ -236,7 +253,10 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
 
         # 1) Retrieve from Pinecone. Tolerate failures — still answer with page context.
         try:
-            retrieved = pinecone_client.query(text=body.question, user_id=body.user_id, top_k=8)
+            tr = _coarse_time_range(body.question)
+            retrieved = pinecone_client.query(
+                text=body.question, user_id=body.user_id, top_k=8, time_range=tr,
+            )
         except Exception as e:
             log_info(f"   ⚠️  Pinecone query failed: {e}")
             retrieved = []
@@ -297,7 +317,10 @@ async def chat_stream(request: Request, body: ChatRequest):
         return StreamingResponse(limited(), media_type="text/event-stream")
 
     try:
-        retrieved = pinecone_client.query(text=body.question, user_id=body.user_id, top_k=8)
+        retrieved = pinecone_client.query(
+            text=body.question, user_id=body.user_id, top_k=8,
+            time_range=_coarse_time_range(body.question),
+        )
     except Exception as e:
         log_info(f"   ⚠️  Pinecone query failed: {e}")
         retrieved = []
@@ -330,6 +353,22 @@ async def chat_stream(request: Request, body: ChatRequest):
                 yield _sse({"error": str(e)})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/api/forget-item", response_model=ForgetResponse)
+@limiter.limit("60/minute")
+async def forget_item(request: Request, body: ForgetItemRequest) -> ForgetResponse:
+    """Delete a single interaction's vector by reconstructing its deterministic id."""
+    try:
+        record = format_interaction(body.interaction)
+        if record is None:
+            # Never indexed (e.g. a scroll) — nothing to delete.
+            return ForgetResponse(success=True)
+        pinecone_client.delete_ids([record.id])
+        return ForgetResponse(success=True)
+    except Exception as e:  # noqa: BLE001
+        RequestLogger.log_error("/api/forget-item", e)
+        return ForgetResponse(success=False, error=str(e))
 
 
 @router.post("/api/forget", response_model=ForgetResponse)
